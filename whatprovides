@@ -1,0 +1,186 @@
+#!/bin/bash
+# Copyright (c) 2017 Timothy Savannah - All Rights Reserved
+#   This code is licensed under the terms of the APACHE license version 2.0
+#
+#
+#  Whatprovides - Query pacman database to see what package provides a given file
+#                  on the current system.
+#
+#    Note, if a directory is queried, multiple packages may be printed (one-per-line)
+#
+#  Returns 0 if at least one provider is found
+
+echoerr() {
+	echo "$@" >&2
+}
+
+usageSummary() {
+	echoerr "Usage: whatprovides (Options) [file]"
+	echoerr "  Prints the package which provides the given file on the current system,"
+	echoerr "   otherwise returns non-zero."
+	echoerr;
+}
+
+usageOptions() {
+    echoerr "   Options:"
+    echoerr;
+    echoerr "      -n   --no-cache       DO NOT Use a cache of the package ownership list. "
+    echoerr "                            This option is should never be necessary,  "
+    echoerr "                             as the cache will be regenerated when any "
+    echoerr "                             package is installed/removed/updated.     "
+}
+
+usageShort() {
+    usageSummary;
+    echoerr "Use --help to see available options"
+    echoerr;
+}
+
+usageFull() {
+    usageSummary;
+    usageOptions;
+    echoerr;
+}
+
+if ( echo " $@ " | grep -qE ' \-\-help ' );
+then
+    usageFull;
+    exit 0;
+fi
+
+
+if [[ $# -eq 0 ]];
+then
+    usageFull;
+    exit 2;
+fi
+
+if [[ $# -gt 2 ]];
+then
+    echoerr -e "Too many arguments.\n"
+    usageShort;
+    exit 2;
+fi
+
+USE_CACHED="true"
+QUERY_ARG="unset"
+
+for arg in "$@";
+do
+    if [[ "${arg}" = "-n" ]] || [[ "${arg}" = "--no-cache" ]];
+    then
+        USE_CACHED="false"
+    elif [[ "${QUERY_ARG}" = "unset" ]];
+    then
+        QUERY_ARG="${arg}"
+    else
+        echoerr -e "Unknown argument: '${arg}'\n"
+        usageShort;
+        exit 2;
+    fi
+done
+
+if [[ "${QUERY_ARG}" = "unset" ]];
+then
+    echoerr -e "Missing query file.\n\n"
+    usageShort;
+fi
+
+get_mtime() {
+    stat --printf="%Y" "${1}"
+    return $?
+}
+
+check_db_needs_regen() {
+    TRY_DB="${1}"
+    [[ ! -e "${TRY_DB}" ]] && return 0;
+    [[ $(get_mtime '/var/log/pacman.log' ) -le $(get_mtime "${TRY_DB}") ]] && return 1
+    return 0
+}
+    
+
+check_can_use_dbfile() {
+    TRY_DB="${1}"
+    if [[ -w "${TRY_DB}" ]];
+    then
+        # Can write, return true
+        return 0;
+    elif [[ -e "${TRY_DB}" ]] && [[ -r "${TRY_DB}" ]];
+    then
+        # Can't write but exists... see if needs update, else we can use.
+        if ( check_db_needs_regen "${TRY_DB}" );
+        then
+            return 0;
+        fi
+        # We need to update, so fallback.
+        return 1;
+   else
+       # Hmm.. this isn't good.
+       TMP_FILE="$(mktemp /tmp/.doXXXXXXXX)"
+       printf "#!/bin/bash\ntouch '%s' 2>/dev/null && rm -f '%s' 2>/dev/null\nexit \$?\n'" "${TRY_DB}" "${TRY_DB}" > "${TMP_FILE}"
+       chmod +x "${TMP_FILE}"
+       flock "${TRY_DB}" -c "${TMP_FILE}" >/dev/null 2>/dev/null
+       RET=$?
+       rm -f "${TMP_FILE}"
+       return ${RET}
+   fi
+}
+
+# PHEW! That was a LOT of argument parsing! Onto the good stuff...
+
+if [[ "${USE_CACHED}" = "true" ]];
+then
+    FOUND_USABLE_DB="false"
+    for tryDB in "/var/cache/pacman/whatprovides.db" "$HOME/.whatprovides.db";
+    do
+        if  ( check_can_use_dbfile "${tryDB}" );
+        then
+            FOUND_USABLE_DB="true"
+            USE_CACHED="${tryDB}"
+            break
+        fi
+    done
+    if [[ "${FOUND_USABLE_DB}" = "true" ]];
+    then
+        if ( check_db_needs_regen "${USE_CACHED}" );
+        then
+            TMP_FILE="$(mktemp /tmp/.doXXXXXXXX)"
+            printf "#!/bin/bash\npacman -Ql > '%s'\n" "${USE_CACHED}" > "${TMP_FILE}"
+            chmod +x "${TMP_FILE}"
+            flock "${USE_CACHED}" -c "${TMP_FILE}"
+            rm -f "${TMP_FILE}"
+        fi
+    else
+        echoerr "Warning: Can't access /var/cache/pacman/whatprovides.db (or needs regenerated), and cannot create/update file: '$HOME/.whatprovides'"
+        echoerr "Warning:  Skipping cached DB."
+        USE_CACHED="false"
+    fi
+fi
+
+if  [[ ! -e "${QUERY_ARG}" ]] && ! (  echo "${QUERY_ARG}" | grep -q "/" );
+then
+	SEARCH="$(/usr/bin/which "${QUERY_ARG}" 2>/dev/null)"
+	if [ $? -ne 0 -o -z "${SEARCH}" ];
+	then
+		echoerr "Warning: '${QUERY_ARG}' does not contain a slash and does not point to a file/directory, and cannot find in PATH. Failing.";
+		exit 1;
+	fi
+else
+	SEARCH="$(/usr/bin/realpath -s "${QUERY_ARG}")"
+fi
+
+if [[ -d "${SEARCH}" ]] && ( ! echo "${SEARCH}" | grep -qE '/$' );
+then
+	SEARCH="${SEARCH}/"
+fi
+
+if [[ "${USE_CACHED}" = "false" ]];
+then
+    DB_QUERY="pacman -Ql"
+else
+    DB_QUERY="cat ${USE_CACHED}"
+fi
+
+${DB_QUERY} | grep " ${SEARCH}"'$' | sed 's/ .*//g'
+[ $? -ne 0 ] && exit 1;
+
