@@ -31,3 +31,17 @@ Passing -d followed by a directory name, like  *installpackage -d mypkgs* would 
 
 If you are not already root, calling "installpackage" will prompt for root password and su into root to perform the operation.
 
+
+buildit.sh
+----------
+
+Builds (from abs) and installs a provided list of packages.
+
+Will automatically refresh abs database if it exceeds 1 day of age (by default).
+
+It's a set-it-and-forget-it build system! If any errors occur, they will be reported at the bottom. No prompts, no mess, no fuss!
+
+Example Usage:
+
+	buildit.sh tar xz zip  # This will compile and install "tar" "xz" and "zip" packages based on settings in /etc/makepkg.conf
+
