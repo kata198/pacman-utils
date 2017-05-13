@@ -4,12 +4,9 @@
 #   This code is licensed under the terms of the APACHE license version 2.0
 #
 #
-#  Whatprovides - Query pacman database to see what package provides a given file
-#                  on the current system.
+#  installpackage - Installs packages using shorthand notation. 
+#                     Useful in conjunction with makepkg and PKGBUILDs
 #
-#    Note, if a directory is queried, multiple packages may be printed (one-per-line)
-#
-#  Returns 0 if at least one provider is found
 
 print_help() {
 	echo "Usage:";
