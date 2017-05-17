@@ -1,0 +1,61 @@
+#!/usr/bin/env python
+# Copyright (c) 2017 Timothy Savannah - All Rights Reserved
+#   This code is licensed under the terms of the APACHE license version 2.0
+#
+#  whatprovides_upstream.py - Checks the upstream provides json database
+#    created by extractMtree.py
+#
+#  Provide a filename, and it returns what packages would provide that item,
+#   without that package needant be installed
+
+import os
+import sys
+import json
+import gzip
+import subprocess
+
+PROVIDES_DB = '/var/lib/pacman/.providesDB'
+
+if __name__ == '__main__':
+
+    if len(sys.argv) != 2 or '--help' in sys.argv[1:]:
+        sys.stderr.write('Usage: whatprovides [filename]\n  Prints the packages that provide a filename.\n\n')
+        sys.exit(0)
+
+
+    queryVal = sys.argv[1]
+    if os.path.isdir(queryVal) and queryVal[-1] != '/':
+        queryVal = queryVal + '/'
+
+    if '/' not in queryVal:
+        for pathVal in os.environ['PATH'].split(':'):
+            while pathVal[-1] == '/':
+                pathVal = pathVal[:-1]
+            tryPath = pathVal + '/' + queryVal
+            if os.path.exists(tryPath):
+                queryVal = tryPath
+                break
+
+    if not os.path.exists(PROVIDES_DB) or not os.access(PROVIDES_DB, os.R_OK):
+        sys.stderr.write("No database or can't read database from %s. Use a pre-provided database (check the homepage) or run extractMtree.py to build your own.\n\n")
+        sys.exit(2)
+
+    with open('/var/lib/pacman/.providesDB', 'rb') as f:
+        fileContents = f.read()
+
+    fileContents = gzip.decompress(fileContents)
+    fileContents = fileContents.decode('utf-8')
+
+    providesMap = json.loads(fileContents)
+
+#    providesMap = { name : set(val) for name, val in providesMap.items() }
+
+    providedBy = []
+
+    for pkg, pkgProvides in providesMap.items():
+        if queryVal in pkgProvides:
+            providedBy.append(pkg)
+
+    print ( '\n'.join(providedBy) )
+
+
