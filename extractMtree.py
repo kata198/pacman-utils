@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# vim: set ts=4 sw=4 expandatb :
+# vim: set ts=4 sw=4 expandtab :
 
 # Copyright (c) 2017 Timothy Savannah - All Rights Reserved
 #   This code is licensed under the terms of the APACHE license version 2.0
@@ -246,3 +246,4 @@ if __name__ == '__main__':
     with open('/var/lib/pacman/.providesDB', 'wb') as f:
         f.write( compressed )
 
+# vim: set ts=4 sw=4 expandtab :

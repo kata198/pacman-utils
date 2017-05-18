@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# vim: set ts=4 sw=4 expandtab :
+
 # Copyright (c) 2017 Timothy Savannah - All Rights Reserved
 #   This code is licensed under the terms of the APACHE license version 2.0
 #
@@ -147,3 +149,4 @@ su "${BUILD_AS}" /usr/bin/makepkg || exiterr "makepkg failed"
 pacman -U --noconfirm *.pkg.tar.* || exiterr "Failed to install"
 popd
 
+# vim: set ts=4 sw=4 expandtab :

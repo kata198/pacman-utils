@@ -1,4 +1,7 @@
 #!/bin/bash
+
+# vim: set ts=4 sw=4 expandtab :
+
 # Copyright (c) 2017 Timothy Savannah - All Rights Reserved
 #   This code is licensed under the terms of the APACHE license version 2.0
 #
@@ -184,3 +187,4 @@ fi
 ${DB_QUERY} | grep " ${SEARCH}"'$' | sed 's/ .*//g'
 [ $? -ne 0 ] && exit 1;
 
+# vim: set ts=4 sw=4 expandtab :
