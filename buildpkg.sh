@@ -3,7 +3,7 @@
 # Copyright (c) 2017 Timothy Savannah - All Rights Reserved
 #   This code is licensed under the terms of the APACHE license version 2.0
 #
-# buildit.sh - Builds and installs one or more packages.
+# buildpkg.sh - Builds and installs one or more packages.
 #   Run as regular user, and provide as arguments a list of packages (available through abs)
 
 # ABS_STALE_AFTER - Max age in seconds of abs dir. Will refresh after this time.
@@ -18,7 +18,7 @@ echoerr() {
 
 if [ "$1" = "--help" -o "$1" = "-h" ];
 then
-    echoerr "Usage: buildit.sh [package_name] (Optional: [package_name2] [package_name..N])"
+    echoerr "Usage: buildpkg.sh [package_name] (Optional: [package_name2] [package_name..N])"
     echoerr "   Builds listed packages as current user, and then installs resulting packages as root."
     echoerr;
     exit 1
@@ -30,7 +30,7 @@ then
     BUILD_AS="$(whoami)"
     if [ "$BUILD_AS" = "root" ];
     then
-        echoerr "You must run buildit.sh as a non-root user (to build the package)."
+        echoerr "You must run buildpkg.sh as a non-root user (to build the package)."
         exit 1;
     fi
     if [ $# -eq 0 ];
@@ -83,12 +83,12 @@ exiterr() {
 }
 
 need_update_abs() {
-    if [ ! -f "/var/abs/.buildit_last_fetch" ];
+    if [ ! -f "/var/abs/.buildpkg_last_fetch" ];
     then
         return 0;
     fi
     NOW="$(date +%s)"
-    THEN="$(cat /var/abs/.buildit_last_fetch)"
+    THEN="$(cat /var/abs/.buildpkg_last_fetch)"
 
     [ $(( ${NOW} - ${THEN} )) -ge ${ABS_STALE_AFTER} ] && return 0;
     return 1;
@@ -110,7 +110,7 @@ maybe_update_abs() {
     fi
     
     NOW="$(date +%s)"
-    printf "%s" "${NOW}" > /var/abs/.buildit_last_fetch;
+    printf "%s" "${NOW}" > /var/abs/.buildpkg_last_fetch;
 }
 
 [ ! -d "/usr/src/arch" ] && mkdir -p '/usr/src/arch'
