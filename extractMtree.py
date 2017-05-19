@@ -241,7 +241,7 @@ if __name__ == '__main__':
             sys.stderr.write('After completing, still %d failed packages.\nFailed after retry: %s\n\n' %(len(newFailedPackages), '\n'.join(['\t[%s] %s-%s  \t%s' %(failedP[0], failedP[1], failedP[2], results[failedP[1]]  ) for failedP in newFailedPackages]) ) )
 
 
-    compressed = gzip.compress( json.dumps(results) )
+    compressed = gzip.compress( json.dumps(results).encode('utf-8') )
 
     with open('/var/lib/pacman/.providesDB', 'wb') as f:
         f.write( compressed )
