@@ -10,17 +10,30 @@
 #    and assemble a compressed json database for use by whatprovides_upstream
 
 
-import sys
-import os
-import re
-import json
-import subprocess
-import time
 import gzip
+import os
+import json
+import re
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+
+from io import BytesIO
 
 import func_timeout
 from nonblock import bgwrite
 
+try:
+    PermissionError
+except NameError:
+    PermissionError = IOError
+
+PROVIDES_DB_LOCATION = "/var/lib/pacman/.providesDB"
+
+global isVerbose
+isVerbose = False
 
 def decompressZlib(data):
     
@@ -88,7 +101,12 @@ def fetchFromUrl(url, numBytes):
     else:
         limitBytes = ''
 
-    pipe = subprocess.Popen("/usr/bin/curl '-k' '%s' %s" %(url, limitBytes), shell=True, stdout=subprocess.PIPE, stderr=devnull)
+    if not isVerbose:
+        extraArgs = '--silent'
+    else:
+        extraArgs = ""
+
+    pipe = subprocess.Popen("/usr/bin/curl '-k' %s '%s' %s" %(extraArgs, url, limitBytes), shell=True, stdout=subprocess.PIPE, stderr=devnull)
     
     urlContents = pipe.stdout.read()
     ret = pipe.wait()
@@ -115,7 +133,34 @@ def getAllPackages():
     return [tuple(x.split(' ')[0:3]) for x in contents.decode('utf-8').split('\n') if x and ' ' in x]
 
 
-REPO_URL = "http://mirrors.acm.wpi.edu/archlinux/%s/os/x86_64/%s"
+# USE_ARCH - Package arch to use. TODO: Allow others
+USE_ARCH = "x86_64" 
+
+def getRepoUrl():
+    nextLine = True
+
+    repoRE = re.compile('^[ \t]*Server[ \t]*=[ \t]*(?P<server_url>.+)$')
+
+    with open('/etc/pacman.d/mirrorlist', 'rt') as f:
+        nextLine = f.readline()
+        while nextLine != '':
+            matchObj = repoRE.match(nextLine.strip())
+            if matchObj:
+                groupDict = matchObj.groupdict()
+                if groupDict['server_url']:
+                    ret = groupDict['server_url'].replace('$repo', '%s').replace('$arch', USE_ARCH)
+                    while ret.endswith('/'):
+                        ret = ret[:-1]
+
+                    ret += '/%s'
+                    return ret
+
+            nextLine = f.readline()
+
+    raise Exception('Failed to find repo URL from /etc/pacman.d/mirrorlist. Are any not commented?')
+        
+
+#REPO_URL = "http://mirrors.acm.wpi.edu/archlinux/%s/os/x86_64/%s"
 
 def getFileData(filename, decodeWith=None):
     with open(filename, 'rb') as f:
@@ -125,20 +170,50 @@ def getFileData(filename, decodeWith=None):
         contents = contents.decode(decodeWith)
     return contents
 
-from io import BytesIO
-import tarfile
 
 if __name__ == '__main__':
     
-    if len(sys.argv) == 1:
+    args = sys.argv[1:]
+
+
+    if '-v' in args:
+        isVerbose = True
+        args.remove('-v')
+    if '--verbose' in args:
+        isVerbose = True
+        args.remove('--verbose')
+        
+
+    if len(args) == 0:
         allPackages = getAllPackages()
+    else:
+        sys.stderr.write('Too many arguments\n')
+        sys.exit(1)
+
+    if not os.access(PROVIDES_DB_LOCATION, os.W_OK):
+        sys.stdout.write('Cannot write to "%s". Will create temp file.\n' %((PROVIDES_DB_LOCATION, )) )
+        result = False
+        while result not in ('y', 'n'):
+            sys.stdout.write('Continue? (y/n): ')
+            sys.stdout.flush()
+            result = sys.stdin.readline().strip().lower()
+
+        if result == 'n':
+            sys.exit(2)
+
+
+    REPO_URL = getRepoUrl()
+    print ( "Using first repo from /etc/pacman.d/mirrorlist:\n\t%s\n" %(REPO_URL, ))
 
     results = {}
 
     def doOne(repoName, packageName, versionInfo, results, fetchedData=None, useTarMod=False):
+        global isVerbose
+
         if fetchedData is None:
             finalUrl = REPO_URL %( repoName, packageName + "-" + versionInfo + "-x86_64.pkg.tar.xz" )
-            print ( "Fetching url: " + finalUrl )
+            if isVerbose:
+                print ( "Fetching url: " + finalUrl )
 
             if useTarMod is False:
                 maxSize = 1024 * 80
@@ -161,7 +236,8 @@ if __name__ == '__main__':
             except:
                 return doOne(repoName, packageName, versionInfo, results, fetchedData, useTarMod=True)
         else:
-            print ( "Fallback..." )
+            if isVerbose:
+                print ( "Fallback..." )
             data = decompressXz(tarContents)
 
             bio = BytesIO()
@@ -183,22 +259,25 @@ if __name__ == '__main__':
         files = getFiles(mtreeData)
 
         results[packageName] = files
-        sys.stdout.write("Got %d files.\n\n" %(len(files), ))
+        if isVerbose:
+            sys.stdout.write("Got %d files.\n\n" %(len(files), ))
 
 
-    if len(sys.argv) != 1:
-        fileData = getFileData(sys.argv[1])
-        doOne('core', 'binutils', '2.28.0-2', results, fileData)
-        sys.exit(0)
+#    if len(args) != 1:
+#        fileData = getFileData(args)
+#        doOne('core', 'binutils', '2.28.0-2', results, fileData)
+#        sys.exit(0)
 
     failedPackages = []
 
     def runThroughPackages(allPackages, results, failedPackages, timeout=5):
+        global isVerbose
 
         for repoName, packageName, versionInfo in allPackages:
             time.sleep(1.5)
-            sys.stdout.write("Processing %s - %s: " %(repoName, packageName) )
-            sys.stdout.flush()
+            if isVerbose:
+                sys.stdout.write("Processing %s - %s: " %(repoName, packageName) )
+                sys.stdout.flush()
             try:
                 func_timeout.func_timeout(5, doOne, (repoName, packageName, versionInfo, results))
             except func_timeout.FunctionTimedOut as fte:
@@ -243,7 +322,14 @@ if __name__ == '__main__':
 
     compressed = gzip.compress( json.dumps(results).encode('utf-8') )
 
-    with open('/var/lib/pacman/.providesDB', 'wb') as f:
-        f.write( compressed )
+
+    try:
+        with open(PROVIDES_DB_LOCATION, 'wb') as f:
+            f.write( compressed )
+    except PermissionError:
+        tempFile = tempfile.NamedTemporaryFile(mode='wb', delete=False)
+        sys.stderr.write('Failed to open "%s" for writing. Dumping to tempfile: "%s"\n' %(PROVIDES_DB_LOCATION, tempFile.name, ))
+        tempFile.write( compressed )
+        tempFile.close()
 
 # vim: set ts=4 sw=4 expandtab :
