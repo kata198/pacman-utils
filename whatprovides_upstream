@@ -11,33 +11,44 @@
 #  Provide a filename, and it returns what packages would provide that item,
 #   without that package needant be installed
 
+import gzip
+import json
 import os
 import sys
-import json
-import gzip
 import subprocess
+import re
 
 PROVIDES_DB = '/var/lib/pacman/.providesDB'
+
+def globToRE(globStr):
+    
+    pattern = globStr.replace('.', '[\\.]').replace('*', '.*') + '$'
+
+    return re.compile(pattern)
 
 if __name__ == '__main__':
 
     if len(sys.argv) != 2 or '--help' in sys.argv[1:]:
-        sys.stderr.write('Usage: whatprovides [filename]\n  Prints the packages that provide a filename.\n\n')
+        sys.stderr.write('Usage: whatprovides_upstream [filename]\n  Prints the packages that provide a filename.\n\n')
+        sys.stderr.write('Uses the upstraem database at \"%s\".\nQueries all available packages, not just installed packages.\n\n' %(PROVIDES_DB,))
+        sys.stderr.write('A glob expression may be used by including a "*" in the query. E.x. "*/ld.so.conf"\n')
+        sys.stderr.write('  When in glob-mode, the matching package will be printed, followed by a tab, followed by matched filename.\n\n')
         sys.exit(0)
 
 
     queryVal = sys.argv[1]
-    if os.path.isdir(queryVal) and queryVal[-1] != '/':
-        queryVal = queryVal + '/'
+    if '*' not in queryVal:
+        if os.path.isdir(queryVal) and queryVal[-1] != '/':
+            queryVal = queryVal + '/'
 
-    if '/' not in queryVal:
-        for pathVal in os.environ['PATH'].split(':'):
-            while pathVal[-1] == '/':
-                pathVal = pathVal[:-1]
-            tryPath = pathVal + '/' + queryVal
-            if os.path.exists(tryPath):
-                queryVal = tryPath
-                break
+        if '/' not in queryVal:
+            for pathVal in os.environ['PATH'].split(':'):
+                while pathVal[-1] == '/':
+                    pathVal = pathVal[:-1]
+                tryPath = pathVal + '/' + queryVal
+                if os.path.exists(tryPath):
+                    queryVal = tryPath
+                    break
 
     if not os.path.exists(PROVIDES_DB) or not os.access(PROVIDES_DB, os.R_OK):
         sys.stderr.write("No database or can't read database from %s. Use a pre-provided database (check the homepage) or run extractMtree.py to build your own.\n\n")
@@ -55,11 +66,28 @@ if __name__ == '__main__':
 
     providedBy = []
 
-    for pkg, pkgProvides in providesMap.items():
-        if queryVal in pkgProvides:
-            providedBy.append(pkg)
+    if '*' in queryVal:
+        # If did not start with an absolute path or a wildcard, add a wildcard to the front
+        #  (otherwise will never match anything)
+        if not queryVal.startswith( ('/', '*') ):
+            queryVal = '*' + queryVal
 
-    print ( '\n'.join(providedBy) )
+        queryRE = globToRE(queryVal)
+
+        for pkg, pkgProvides in providesMap.items():
+            for pkgProvide in pkgProvides:
+                if queryRE.match(pkgProvide):
+                    providedBy.append( (pkg, pkgProvide) )
+
+        print ( '\n'.join( ["%s\t%s" %(pkgName, pkgProvide) for pkgName, pkgProvide in providedBy ]) )
+
+    else:
+
+        for pkg, pkgProvides in providesMap.items():
+            if queryVal in pkgProvides:
+                providedBy.append(pkg)
+
+        print ( '\n'.join(providedBy) )
 
 
-# vim: set ts=4 sw=4 expandtab :
+    # vim: set ts=4 sw=4 expandtab :
