@@ -22,6 +22,10 @@ usageSummary() {
 	echoerr "  Prints the package which provides the given file on the current system,"
 	echoerr "   otherwise returns non-zero."
 	echoerr;
+    echoerr " Use '*' as a wildcard. Example: '*/libz.so*'"
+    echoerr "  When in wildcard mode, both the package name will be printed, followed"
+    echoerr "   by a tab, and then the matched file."
+    echoerr;
 }
 
 usageOptions() {
@@ -160,16 +164,29 @@ then
     fi
 fi
 
-if  [[ ! -e "${QUERY_ARG}" ]] && ! (  echo "${QUERY_ARG}" | grep -q "/" );
+if ( echo "${QUERY_ARG}" | grep -q '\*' );
 then
-	SEARCH="$(/usr/bin/which "${QUERY_ARG}" 2>/dev/null)"
-	if [ $? -ne 0 -o -z "${SEARCH}" ];
-	then
-		echoerr "Warning: '${QUERY_ARG}' does not contain a slash and does not point to a file/directory, and cannot find in PATH. Failing.";
-		exit 1;
-	fi
+    HAS_WILDCARD="true"
+    if ( ! echo "${QUERY_AG}" | grep -q '^[/\*]' );
+    then
+        # If no star or slash at start, add star for them.
+        #  (otherwise, will never match)
+        QUERY_ARG='*'"${QUERY_ARG}"
+    fi
+    SEARCH="$(printf "%s\n" "${QUERY_ARG}" | sed -e "s|\.|[\\\\.]|g" -e 's|*|.*|g')"
 else
-	SEARCH="$(/usr/bin/realpath -s "${QUERY_ARG}")"
+    HAS_WILDCARD="false"
+    if  [[ ! -e "${QUERY_ARG}" ]] && ! (  echo "${QUERY_ARG}" | grep -q "/" );
+    then
+        SEARCH="$(/usr/bin/which "${QUERY_ARG}" 2>/dev/null)"
+        if [ $? -ne 0 -o -z "${SEARCH}" ];
+        then
+            echoerr "Warning: '${QUERY_ARG}' does not contain a slash and does not point to a file/directory, and cannot find in PATH. Failing.";
+            exit 1;
+        fi
+    else
+        SEARCH="$(/usr/bin/realpath -s "${QUERY_ARG}")"
+    fi
 fi
 
 if [[ -d "${SEARCH}" ]] && ( ! echo "${SEARCH}" | grep -qE '/$' );
@@ -184,7 +201,15 @@ else
     DB_QUERY="cat ${USE_CACHED}"
 fi
 
-${DB_QUERY} | grep " ${SEARCH}"'$' | sed 's/ .*//g'
-[ $? -ne 0 ] && exit 1;
+if [ "${HAS_WILDCARD}" = "false" ];
+then
+    ${DB_QUERY} | grep " ${SEARCH}"'$' | sed 's/ .*//g'
+    [ $? -ne 0 ] && exit 1;
+else
+    ${DB_QUERY} | grep -E " ${SEARCH}"'$' | sed "s| |\t|"
+    [ $? -ne 0 ] && exit 1;
+fi
+
+    
 
 # vim: set ts=4 sw=4 expandtab :
