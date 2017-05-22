@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# vim: set ts=4 sw=4 st=4 :
+
+move_to_bak() {
+	
+	LOCATION="${1}"
+	if [[ -e "${LOCATION}" ]];
+	then
+		mv -f "${LOCATION}" "${LOCATION}.bak"
+	fi
+
+}
+
+echoerr() {
+	echo "$@" >&2
+}
+
+printferr() {
+	printf "$@" >&2
+}
+
+if [[ ! -e "../../PKGBUILD" ]]; # TODO: Check "src" in path
+then
+	echoerr "Should be ran in package's source directory"
+	exit 1;
+fi
+
+
+for fname in "gcda.tar" "../gcda.tar" "../../gcda.tar";
+do
+	move_to_bak "${fname}"
+done
+
+tar -cf 'gcda.tar' $(find . -name '*.gcda')
+RET=$?
+if [ $RET -ne 0 ];
+then
+	printferr "Failed to create gcda.tar in current directory. Exit code: [%d]\n" "${RET}"
+	exit 2;
+fi
+
+ln gcda.tar "$(realpath ../gcda.tar)" || echoerr "Failed to copy gcda.tar to `realpath ../gcda.tar`"
+ln gcda.tar "$(realpath ../../gcda.tar)" || echoerr "Failed to copy gcda.tar to `realpath ../../gcda.tar`"
+
+echo "Created gcda.tar"

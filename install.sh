@@ -2,7 +2,7 @@
 
 # Installs all the pacman-utils
 
-ALL_FILES="installpackage buildpkg.sh whatprovides whatprovides_upstream extractMtree.py"
+ALL_FILES="installpackage buildpkg.sh whatprovides whatprovides_upstream extractMtree.py mkgcdatar"
 
 if [ -z "${PREFIX}" ];
 then
