@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import traceback
 import time
 
 from io import BytesIO
@@ -136,8 +137,9 @@ def getAllPackages():
 # USE_ARCH - Package arch to use. TODO: Allow others
 USE_ARCH = "x86_64" 
 
-def getRepoUrl():
+def getRepoUrls():
     nextLine = True
+    repos = []
 
     repoRE = re.compile('^[ \t]*Server[ \t]*=[ \t]*(?P<server_url>.+)$')
 
@@ -153,14 +155,17 @@ def getRepoUrl():
                         ret = ret[:-1]
 
                     ret += '/%s'
-                    return ret
+                    repos.append(ret)
 
             nextLine = f.readline()
 
-    raise Exception('Failed to find repo URL from /etc/pacman.d/mirrorlist. Are any not commented?')
+    if not repos:
+        raise Exception('Failed to find repo URL from /etc/pacman.d/mirrorlist. Are any not commented?')
+    return repos
         
 
 #REPO_URL = "http://mirrors.acm.wpi.edu/archlinux/%s/os/x86_64/%s"
+#REPO_URLS = [ "http://mirrors.acm.wpi.edu/archlinux/%s/os/x86_64/%s" ]
 
 def getFileData(filename, decodeWith=None):
     with open(filename, 'rb') as f:
@@ -209,16 +214,21 @@ if __name__ == '__main__':
             sys.stderr.write('WARNING: pacman -Sy returned non-zero: %d\n' %(ret,))
 
 
-    REPO_URL = getRepoUrl()
-    print ( "Using first repo from /etc/pacman.d/mirrorlist:\n\t%s\n" %(REPO_URL, ))
+    if 'REPO_URLS' in locals():
+        print ( "USING PREDEFINED REPO")
+        repoUrls = REPO_URLS
+    else:
+        repoUrls = getRepoUrls()
+
+    print ( "Using repos from /etc/pacman.d/mirrorlist:\n\t%s\n" %(repoUrls, ))
 
     results = {}
 
-    def doOne(repoName, packageName, versionInfo, results, fetchedData=None, useTarMod=False):
+    def doOne(repoName, packageName, versionInfo, results, repoUrl, fetchedData=None, useTarMod=False):
         global isVerbose
 
         if fetchedData is None:
-            finalUrl = REPO_URL %( repoName, packageName + "-" + versionInfo + "-x86_64.pkg.tar.xz" )
+            finalUrl = repoUrl %( repoName, packageName + "-" + versionInfo + "-x86_64.pkg.tar.xz" )
             if isVerbose:
                 print ( "Fetching url: " + finalUrl )
 
@@ -241,7 +251,7 @@ if __name__ == '__main__':
                 mtreeSize = getSize(headerStart)
                 compressedData = headerStart[512 : 512 + mtreeSize]
             except:
-                return doOne(repoName, packageName, versionInfo, results, fetchedData, useTarMod=True)
+                return doOne(repoName, packageName, versionInfo, results, repoUrl, fetchedData, useTarMod=True)
         else:
             if isVerbose:
                 print ( "Fallback..." )
@@ -277,7 +287,7 @@ if __name__ == '__main__':
 
     failedPackages = []
 
-    def runThroughPackages(allPackages, results, failedPackages, timeout=5):
+    def runThroughPackages(allPackages, results, failedPackages, repoUrls, timeout=5):
         global isVerbose
 
         for repoName, packageName, versionInfo in allPackages:
@@ -286,18 +296,44 @@ if __name__ == '__main__':
                 sys.stdout.write("Processing %s - %s: " %(repoName, packageName) )
                 sys.stdout.flush()
             try:
-                func_timeout.func_timeout(5, doOne, (repoName, packageName, versionInfo, results))
+                func_timeout.func_timeout(8, doOne, (repoName, packageName, versionInfo, results, repoUrls[0]))
             except func_timeout.FunctionTimedOut as fte:
                 try:
-                    failedPackages.append ( (repoName, packageName, versionInfo) )
-                    errStr = 'Error TIMEOUT processing %s - %s : FunctionTimedOut\n\n' %(repoName, packageName )
-                    sys.stderr.write(errStr)
-                    results[packageName] = errStr
+                    didIt = False
+                    for nextRepoUrl in repoUrls[1:]:
+                        try:
+                            func_timeout.func_timeout(8, doOne, (repoName, packageName, versionInfo, results, nextRepoUrl))
+                            didIt = True
+                            break
+                        except func_timeout.FunctionTimedOut:
+                            pass
+                        except KeyboardInterrupt as ke:
+                            raise ke
+                        except Exception as e:
+                            try:
+                                exc_info = sys.exc_info()
+                                failedPackages.append ( (repoName, packageName, versionInfo) )
+                                errStr = 'Error processing %s - %s : < %s >: %s\n\n' %(repoName, packageName, e.__class__.__name__, str(e))
+                                sys.stderr.write(errStr)
+                                if isVerbose:
+                                    traceback.print_exception(*exc_info)
+                                results[packageName] = errStr
+                            except:
+                                pass
+
+                    if didIt is False:
+                        failedPackages.append ( (repoName, packageName, versionInfo) )
+                        errStr = 'Error TIMEOUT processing %s - %s : FunctionTimedOut\n\n' %(repoName, packageName )
+                        sys.stderr.write(errStr)
+                        results[packageName] = errStr
                 except:
                     pass
             except KeyboardInterrupt as ke:
                 raise ke
             except Exception as e:
+                if isVerbose:
+                    exc_info = sys.exc_info()
+                    traceback.print_exception(*exc_info)
                 try:
                     failedPackages.append ( (repoName, packageName, versionInfo) )
                     errStr = 'Error processing %s - %s : < %s >: %s\n\n' %(repoName, packageName, e.__class__.__name__, str(e))
@@ -306,10 +342,12 @@ if __name__ == '__main__':
                 except:
                     pass
 
+        #END: def runThroughPackages
+
     try:
-        runThroughPackages(allPackages, results, failedPackages, timeout=5)
+        runThroughPackages(allPackages, results, failedPackages, repoUrls, timeout=5)
     except KeyboardInterrupt as ke:
-        pass
+        sys.exit(32)
 
     if failedPackages:
         sys.stderr.write("Need to retry %d packages. Resting for a minute....\n\n" %(len(failedPackages), ))
@@ -319,7 +357,7 @@ if __name__ == '__main__':
         #   slow mirror, etc.
         newFailedPackages = []
         try:
-            runThroughPackages( failedPackages, results, newFailedPackages, timeout=(60 * 8))
+            runThroughPackages( failedPackages, results, newFailedPackages, repoUrls, timeout=(60 * 8))
         except KeyboardInterrupt as ke:
             pass
 
