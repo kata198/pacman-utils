@@ -20,6 +20,8 @@ import re
 
 PROVIDES_DB = '/var/lib/pacman/.providesDB'
 
+SUPPORTED_DB_VERSION = '0.2'
+
 def globToRE(globStr):
     
     pattern = globStr.replace('.', '[\\.]').replace('*', '.*') + '$'
@@ -62,7 +64,14 @@ if __name__ == '__main__':
 
     providesMap = json.loads(fileContents)
 
-    providesMap.pop('__vers')
+    try:
+        version = providesMap.pop('__vers')
+    except:
+        version = None
+
+    if version != SUPPORTED_DB_VERSION:
+        sys.stderr.write('providesDB version %s is not the supported version, %s.\nEither download a new providesDB or run extractMtree.py --convert to convert\n\n' %( str(version), SUPPORTED_DB_VERSION))
+        sys.exit(2)
 
 #    providesMap = { name : set(val) for name, val in providesMap.items() }
 
