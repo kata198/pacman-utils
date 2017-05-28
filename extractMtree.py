@@ -10,6 +10,7 @@
 #    and assemble a compressed json database for use by whatprovides_upstream
 
 
+import copy
 import gzip
 import os
 import json
@@ -52,8 +53,16 @@ except NameError:
     PermissionError = IOError
 
 
+# I know... a lot of globals.
+#  TODO: Refactor
+
+global LATEST_FILE_FORMAT
 LATEST_FILE_FORMAT = '0.2'
 
+global SUPPORTED_DATABASE_VERSIONS
+SUPPORTED_DATABASE_VERSIONS = ('0.1', '0.2')
+
+global PROVIDES_DB_LOCATION
 PROVIDES_DB_LOCATION = "/var/lib/pacman/.providesDB"
 
 global isVerbose
@@ -68,6 +77,88 @@ MaxBackgroundIO = BackgroundIOPriority(.0009, SUBPROCESS_BUFSIZE, 100, 5)
 global SHORT_FETCH_SIZE
 SHORT_FETCH_SIZE = 1024 * 200 # Try to fetch first 200K to find MTREE
 
+# USE_ARCH - Package arch to use. TODO: Allow others
+global USE_ARCH
+USE_ARCH = "x86_64" 
+
+global MAX_THREADS
+MAX_THREADS = 6
+
+global SHORT_TIMEOUT
+SHORT_TIMEOUT = 15
+global LONG_TIMEOUT
+LONG_TIMEOUT = ( 60 * 8 )
+
+# Max extra urls added to each thread.
+#  Normally, a repo is assigned to a thread, but if any are extra
+#  up to this many will be made available to each thread.
+MAX_EXTRA_URLS = 3
+
+global ALL_STR_TYPES
+
+ALL_STR_TYPES = [ str, bytes ]
+try:
+    unicode
+    ALL_STR_TYPES.append(unicode)
+except:
+    pass
+
+ALL_STR_TYPES = tuple(ALL_STR_TYPES)
+
+class FailedToConvertDatabaseException(ValueError):
+    pass
+
+def convertOldDatabase(oldVersion, data):
+    global LATEST_FILE_FORMAT
+    global ALL_STR_TYPES
+
+    if oldVersion == '0.1':
+        for key in list(data.keys()):
+            if key == '__vers': # Not in version 0.1, but whatever..
+                continue
+
+            oldData = data[key]
+            if issubclass(oldData.__class__, ALL_STR_TYPES):
+                # If string, was an error
+                newData = { 
+                    'files'   : [],   # No files
+                    'version' : '',   # Unknown version
+                    'error'   : oldData, # Error string
+                }
+                data[key] = newData
+            elif issubclass(oldData.__class__, (list, tuple)): # Should be list, but test tuple too for some reason..
+                newData = {
+                    'files'    : copy.copy(oldData), # Copy the data ( list of files ). Probably not required to copy, but simplifies GC
+                    'version'  : '',                 # Unknown version
+                    'error'    : None,               # No error
+                }
+                data[key] = newData
+            else:
+                raise FailedToConvertDatabaseException('Failed to convert old data (version %s) to latest version: %s' %(oldVersion, LATEST_FILE_FORMAT))
+
+    data['__vers'] = LATEST_FILE_FORMAT
+
+    # No return - data modified inline
+
+def writeDatabase(results):
+    global PROVIDES_DB_LOCATION
+
+    compressed = gzip.compress( json.dumps(results).encode('utf-8') )
+
+
+    try:
+        with open(PROVIDES_DB_LOCATION, 'wb') as f:
+            f.write( compressed )
+    except PermissionError as permError:
+        tempFile = tempfile.NamedTemporaryFile(mode='wb', delete=False)
+        sys.stderr.write('Failed to open "%s" for writing ( %s ). Dumping to tempfile: "%s"\n' %(PROVIDES_DB_LOCATION, str(permError), tempFile.name, ))
+        tempFile.write( compressed )
+        tempFile.close()
+
+    # Force this now - it's big!
+    del compressed
+    gc.collect()
+            
 
 def decompressDataSubprocess(data, cmd):
     global MaxBackgroundIO
@@ -145,10 +236,14 @@ def decompressXz(data):
     # -dc - Decompress to stdout
     return decompressDataSubprocess(data, ['/usr/bin/xz', '-dc'])
 
-SIZE_IDX_START = 124
-SIZE_IDX_END = 124 + 12
 
 def getSize(header):
+
+    # Expected locations in tar header of size. Very variable because of multiple extensions, etc
+    #  These are used in the "short read" path. Upon failure, the full tar will be downloaded
+    #  and the "tar" module used (which supports more format versions)
+    SIZE_IDX_START = 124
+    SIZE_IDX_END = 124 + 12
     
     trySection = header[SIZE_IDX_START : SIZE_IDX_END]
     return int(trySection, 8)
@@ -213,8 +308,6 @@ def getAllPackages():
     return [tuple(x.split(' ')[0:3]) for x in contents.decode('utf-8').split('\n') if x and ' ' in x]
 
 
-# USE_ARCH - Package arch to use. TODO: Allow others
-USE_ARCH = "x86_64" 
 
 def getRepoUrls():
     nextLine = True
@@ -254,12 +347,6 @@ class RefObj(object):
 #REPO_URL = "http://mirrors.acm.wpi.edu/archlinux/%s/os/x86_64/%s"
 #REPO_URLS = [ "http://mirrors.acm.wpi.edu/archlinux/%s/os/x86_64/%s" ]
 
-MAX_THREADS = 6
-
-SHORT_TIMEOUT = 15
-LONG_TIMEOUT = ( 60 * 8 )
-
-
 class RetryWithFullTarException(Exception):
     pass
 
@@ -273,6 +360,10 @@ def getFileData(filename, decodeWith=None):
 
 
 def createThreads(splitBy, allPackages, repoUrls, resultsRef, failedPackages):
+    global SHORT_TIMEOUT
+    global MAX_EXTRA_URLS
+    global isVerbose
+
     threads = []
     numPackages = len(allPackages)
     if splitBy > 1:
@@ -290,6 +381,8 @@ def createThreads(splitBy, allPackages, repoUrls, resultsRef, failedPackages):
         print ( "Starting %d threads...\n" %(splitBy,))
         for i in range(splitBy):
             packageSet = splitPackages[i]
+            if isVerbose:
+                print ( "Thread %d primary repo: %s" %(i, repoUrls[i]) )
             myRepoUrls = [ repoUrls[i] ] + repoUrls[splitBy : splitBy + MAX_EXTRA_URLS]
             thisThread = StoppableThread(target=runThroughPackages, args=(packageSet, resultsRef, failedPackages, myRepoUrls), kwargs={'timeout' : SHORT_TIMEOUT})
 
@@ -299,24 +392,61 @@ def createThreads(splitBy, allPackages, repoUrls, resultsRef, failedPackages):
 
     return threads
 
+def printUsage():
+    sys.stderr.write('''Usage: extractMtree.py (options)
+  Downloads and extracts the file list from the repo.
+
+    Options:
+
+       --single-thread           Use one thread.
+       --threads=N               Use N threads (Max at number of repos)
+       --convert                 ONLY convert the old database to the new version
+
+''')
+
 if __name__ == '__main__':
     # NOTE: This uses a LOT of memory, so we delete and garbage collect
     #  manually (since everything in main thread is in one scope, it will
     #  rarely, if ever, automatically trigger.
     
+    convertOnly = False
+
     args = sys.argv[1:]
 
+    if '--help' in args or '-h' in args:
+        printUsage()
+        sys.exit(0)
 
-    if '-v' in args:
-        isVerbose = True
-        args.remove('-v')
-    if '--verbose' in args:
-        isVerbose = True
-        args.remove('--verbose')
-        
+
+    # setNumThreads - Used to track if multiple thread arguments were provided
+    setNumThreads = False
+
+    if '--single-thread' in args:
+        MAX_THREADS = 1
+        setNumThreads = True
+        args.remove('--single-thread')
+
+    for arg in args[:]:
+        if arg in ('-v', '--verbose'):
+            isVerbose = True
+            args.remove(arg)
+        elif arg.startswith('--threads='):
+            try:
+                NUM_THREADS = int(arg[ len('--threads=') : ])
+            except:
+                sys.stderr.write('Number of threads must be a digit! Problem with arg:   "%s"\n\n' %(arg, ))
+                sys.exit(1)
+            if setNumThreads is True and NUM_THREADS != 1:
+                sys.stderr.write('Defined both a > 1 number of threads AND --single-thread. Pick one.\n\n')
+                sys.exit(1)
+            args.remove(arg)
+        elif arg == '--convert':
+            convertOnly = True
+            args.remove(arg)
+
 
     if len(args) != 0:
-        sys.stderr.write('Too many arguments\n')
+        sys.stderr.write('Unknown arguments: %s\n' %(str(args), ))
         sys.exit(1)
  
 #    allPackages = [ ('core', 'binutils', '2.28.0-2') ]
@@ -343,7 +473,35 @@ if __name__ == '__main__':
             sys.stdout.write('Read %d records from old database. Trimming non-updates...\n' %(len(oldResults), ))
 
             if '__vers' in oldResults:
-                oldResults.pop('__vers')
+                oldVersion = oldResults.pop('__vers')
+            else:
+                # TEMP: Assume for now old version is 0.1 because it did not have a __vers marker.
+                #   TODO: In a later version of extractedMtree, remove this assumption
+                oldVersion = '0.1'
+
+            if oldVersion not in SUPPORTED_DATABASE_VERSIONS:
+                raise FailedToConvertDatabaseException('Unsupported database version: ' + oldVersion)
+
+            # Try to convert old database to new format
+            convertOldDatabase(oldVersion, oldResults)
+
+            if convertOnly:
+                if oldVersion == LATEST_FILE_FORMAT:
+                    sys.stderr.write('No need to update, already at latest version.\n')
+                    sys.exit(0)
+
+                try:
+                    writeDatabase(oldResults)
+                except Exception as e:
+                    exc_info = sys.exc_info()
+                    sys.stderr.write('Failed to write database.  %s:  %s\n\n' %(e.__class__.__name__, str(e)))
+                    traceback.print_exception(*exc_info)
+                    sys.stderr.write('\n')
+                    sys.exit(4)
+                sys.stdout.write('Successfully updated database.\n')
+                sys.exit(0)
+                    
+                
 
             newPackages = []
             for packageInfo in allPackages:
@@ -378,10 +536,16 @@ if __name__ == '__main__':
             del newPackages
 
         except Exception as e:
-            sys.stderr.write('Error reading old database:  %s:  %s\n' %( e.__class__.__name__, str(e)))
+            sys.stderr.write('Error reading old database (will perform a full update):  %s:  %s\n' %( e.__class__.__name__, str(e)))
         finally:
             del priorDBContents
             gc.collect()
+
+
+    if convertOnly: # end if priorDBContents
+        sys.stderr.write('Asked to convert old database, but could not read successfully from "%s"\n' %(PROVIDES_DB_LOCATION, ))
+        sys.exit(3)
+        
 
 
     if not os.access(PROVIDES_DB_LOCATION, os.W_OK):
@@ -415,6 +579,8 @@ if __name__ == '__main__':
         global isVerbose
         global SHORT_FETCH_SIZE
 
+        if isVerbose and useTarMod is True:
+            print ( "Using full fetch and tar module for %s - %s" %(repoName, packageName) )
         results = resultsRef()
 
         if fetchedData is None:
@@ -426,6 +592,7 @@ if __name__ == '__main__':
                 maxSize = SHORT_FETCH_SIZE
             else:
                 maxSize = None
+
             tarContents = fetchFromUrl(finalUrl, maxSize)
         else:
             finalUrl = '[cached data]'
@@ -461,16 +628,15 @@ if __name__ == '__main__':
 
             try:
                 mtreeSize = getSize(headerStart)
-                compressedData = headerStart[512 : 512 + mtreeSize]
+                compressedData = headerStart[512 : 512 + mtreeSize] # 512 is header size. 
             except Exception as ex2:
+                # If we failed with the "short fetch", try again with full fetch and tar module
                 if useTarMod is False:
                     return doOne(repoName, packageName, versionInfo, resultsRef, repoUrl, fetchedData, useTarMod=True)
                 raise ex2
 
         else:
             # doTarMod is True
-            if isVerbose:
-                print ( "Fallback..." )
             data = decompressXz(tarContents)
 
             bio = BytesIO()
@@ -493,7 +659,7 @@ if __name__ == '__main__':
 
         results[packageName] = { 'files' : files, 'version' : versionInfo, 'error' : None }
         if isVerbose:
-            sys.stdout.write("Got %d files.\n\n" %(len(files), ))
+            sys.stdout.write("Got %d files for %s.\n\n" %(len(files), packageName ))
     
     # END: doOne
 
@@ -586,7 +752,6 @@ if __name__ == '__main__':
 
         #END: def runThroughPackages
 
-    MAX_EXTRA_URLS = 3
     
     splitBy = len(repoUrls)
     if splitBy > MAX_THREADS:
@@ -714,21 +879,13 @@ if __name__ == '__main__':
 
         results['__vers'] = LATEST_FILE_FORMAT
 
-        compressed = gzip.compress( json.dumps(results).encode('utf-8') )
 
+        writeDatabase(results)
 
-        try:
-            with open(PROVIDES_DB_LOCATION, 'wb') as f:
-                f.write( compressed )
-        except PermissionError:
-            tempFile = tempfile.NamedTemporaryFile(mode='wb', delete=False)
-            sys.stderr.write('Failed to open "%s" for writing. Dumping to tempfile: "%s"\n' %(PROVIDES_DB_LOCATION, tempFile.name, ))
-            tempFile.write( compressed )
-            tempFile.close()
         pass
         #import pdb; pdb.set_trace()
         print ( "Success.\n")
-        print ( str(locals().keys()) )
+#        print ( str(locals().keys()) )
         pass
         pass
         pass
