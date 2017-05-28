@@ -62,6 +62,8 @@ if __name__ == '__main__':
 
     providesMap = json.loads(fileContents)
 
+    providesMap.pop('__vers')
+
 #    providesMap = { name : set(val) for name, val in providesMap.items() }
 
     providedBy = []
@@ -75,7 +77,7 @@ if __name__ == '__main__':
         queryRE = globToRE(queryVal)
 
         for pkg, pkgProvides in providesMap.items():
-            for pkgProvide in pkgProvides:
+            for pkgProvide in pkgProvides['files']:
                 if queryRE.match(pkgProvide):
                     providedBy.append( (pkg, pkgProvide) )
 
@@ -84,7 +86,7 @@ if __name__ == '__main__':
     else:
 
         for pkg, pkgProvides in providesMap.items():
-            if queryVal in pkgProvides:
+            if queryVal in pkgProvides['files']:
                 providedBy.append(pkg)
 
         print ( '\n'.join(providedBy) )
