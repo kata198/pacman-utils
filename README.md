@@ -5,9 +5,12 @@ Some utils and helper scripts for archlinux packages
 whatprovides
 ------------
 
-Check for what package provides a given file, directory, or command.
+Check for what package provides a given file or directory, from installed packages on the system.
 
 Whatprovides generates and uses a cache of the listed package-ownership database, and automatically updates when packages are installed/removed/upgraded.
+
+Supports glob expressions, i.e. '\*/libc.so\*' . If in glob mode, will print the providing package followed by a tab and the provided file.
+
 
 Examples:
 
@@ -17,6 +20,24 @@ Examples:
 	[tim ]$ whatprovides /etc/ntp.conf
 	ntp
 
+	[tim ]$ whatprovides '*/libc.so*'
+	glibc   /usr/lib/libc.so
+	glibc   /usr/lib/libc.so.6
+	lib32-glibc     /usr/lib32/libc.so
+	lib32-glibc     /usr/lib32/libc.so.6
+
+
+
+whatprovides\_upstream
+----------------------
+
+Check for what package provides a given file or directory, from all available packages (installed or available).
+
+This requires *extractMtree.py* to be ran to create the providesDB, or (recommended) use the data/providesDB (copy to /var/lib/pacman/.providesDB) as it takes a long time to run, and will strain mirros if everyone starts running them. I'd like to get the mirrors to execute a modified version locally and supply providesDB, but they currently don't.
+
+I update this version often.
+
+Supports glob expressions, i.e. '\*/libc.so\*' . If in glob mode, will print the providing package followed by a tab and the provided file.
 
 installpackage
 --------------
