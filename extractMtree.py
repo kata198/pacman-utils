@@ -782,7 +782,7 @@ if __name__ == '__main__':
             sys.stderr.flush()
             # Raise keyboard interrupt in each thread to make them terminate
             for thread in threads:
-                thread.stop(ke)
+                thread._stopThread(ke)
 
             # Try real quick to cleanup, they are daemon threads so they will be
             #   terminated at end of program forcibly
@@ -821,7 +821,7 @@ if __name__ == '__main__':
                     sys.stderr.flush()
                     # Raise keyboard interrupt in each thread to make them terminate
                     for thread in threads:
-                        thread.stop(ke)
+                        thread._stopThread(ke)
 
                     # Try real quick to cleanup, they are daemon threads so they will be
                     #   terminated at end of program forcibly
