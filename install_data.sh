@@ -1,9 +1,8 @@
 #!/bin/bash
 
 # Installs all the pacman-utils
-#  use ./install.sh PREFIX=$HOME to install to local home dir.
 
-ALL_FILES="installpackage buildpkg.sh whatprovides whatprovides_upstream extractMtree.py mkgcdatar"
+PROVIDESDB_DIR="/var/lib/pacman/.providesDB"
 
 for arg in "$@";
 do
@@ -39,21 +38,15 @@ else
     fi
 fi
 
-BINDIR="${DESTDIR}/${PREFIX}/bin"
-BINDIR="$(echo "${BINDIR}" | sed 's|//|/|g')"
+mkdir -p "${DESTDIR}/var/lib/pacman"
 
-mkdir -p "${DESTDIR}/${PREFIX}/bin"
-
-install -v -m 755 ${ALL_FILES} "${DESTDIR}/${PREFIX}/bin"
+install -v -m 644 "data/providesDB" "${DESTDIR}/var/lib/pacman/.providesDB"
 RET=$?
 if [ $RET -ne 0 ];
 then
     echo;
     echo;
-    echo "WARNING: Install returned non-zero. Check for errors above"'!';
-    exit ${RET}
+    echo 'Error installing data! Please check error messages above for more info!'
+    exit $RET
 fi
 
-
-
-#install -v -m 644 "data/providesDB" "${DESTDIR}/var/lib/pacman/.providesDB"
