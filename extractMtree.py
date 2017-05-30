@@ -62,6 +62,9 @@ LATEST_FILE_FORMAT = '0.2'
 global SUPPORTED_DATABASE_VERSIONS
 SUPPORTED_DATABASE_VERSIONS = ('0.1', '0.2')
 
+global EXTRACT_MTREE_VERSION
+EXTRACT_MTREE_VERSION = '0.3.0'
+
 global PROVIDES_DB_LOCATION
 PROVIDES_DB_LOCATION = "/var/lib/pacman/.providesDB"
 
@@ -417,6 +420,9 @@ def printUsage():
                                   (e.x. progress bars for curl)
                                  This can get VERY messy if threads > 1
 
+      --version                  Print application version, supported database versions, and exit
+      --help                     Show this message and exit
+
 ''')
 
 if __name__ == '__main__':
@@ -432,6 +438,12 @@ if __name__ == '__main__':
 
     if '--help' in args or '-h' in args:
         printUsage()
+        sys.exit(0)
+
+    if '--version' in args:
+        sys.stderr.write('extractMtree version %s by Timothy Savannah.\nDatabase version: %s\nSupported database versions: %s\n\n' % (
+            EXTRACT_MTREE_VERSION, LATEST_FILE_FORMAT, ', '.join(SUPPORTED_DATABASE_VERSIONS))
+        )
         sys.exit(0)
 
 
