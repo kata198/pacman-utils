@@ -23,7 +23,7 @@ PROVIDES_DB = '/var/lib/pacman/.providesDB'
 SUPPORTED_DB_VERSION = '0.2'
 
 def globToRE(globStr):
-    
+
     pattern = globStr.replace('.', '[\\.]').replace('*', '.*') + '$'
 
     return re.compile(pattern)

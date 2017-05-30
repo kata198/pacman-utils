@@ -176,7 +176,7 @@ def decompressDataSubprocess(data, cmd):
     global MaxBackgroundIO
     global SUBPROCESS_BUFSIZE
     global USE_TEMP_DIR
-    
+
     fte = None
     tempFile = None
 
@@ -251,7 +251,7 @@ def getSize(header):
     #  and the "tar" module used (which supports more format versions)
     SIZE_IDX_START = 124
     SIZE_IDX_END = 124 + 12
-    
+
     trySection = header[SIZE_IDX_START : SIZE_IDX_END]
     return int(trySection, 8)
 
@@ -275,9 +275,9 @@ def getFiles(dataStr):
     return ret
 
 def fetchFromUrl(url, numBytes):
-    
+
     global isSuperVerbose
-    
+
     useStderr = None
 
     if not isSuperVerbose:
@@ -287,7 +287,7 @@ def fetchFromUrl(url, numBytes):
         extraArgs = []
 
     pipe = subprocess.Popen(["/usr/bin/curl", '-k'] + extraArgs + [url],  shell=False, stdout=subprocess.PIPE, stderr=useStderr)
-    
+
     if numBytes:
         urlContents = pipe.stdout.read(numBytes)
         pipe.stdout.close()
@@ -305,7 +305,7 @@ def fetchFromUrl(url, numBytes):
     return urlContents
 
 def getAllPackages():
-    
+
     devnull = open(os.devnull, 'w')
 
     pipe = subprocess.Popen(["/usr/bin/pacman", "-Sl"], shell=False, stdout=subprocess.PIPE, stderr=devnull)
@@ -345,10 +345,10 @@ def getRepoUrls():
     if not repos:
         raise Exception('Failed to find repo URL from /etc/pacman.d/mirrorlist. Are any not commented?')
     return repos
- 
+
 
 class RefObj(object):
-    
+
     def __init__(self, ref):
         self.ref = ref
 
@@ -429,7 +429,7 @@ if __name__ == '__main__':
     # NOTE: This uses a LOT of memory, so we delete and garbage collect
     #  manually (since everything in main thread is in one scope, it will
     #  rarely, if ever, automatically trigger.
-    
+
     convertOnly = False
 
     forceOldUpdate = False
@@ -480,13 +480,13 @@ if __name__ == '__main__':
         elif superVerboseRE.match(arg):
             isSuperVerbose = True
             args.remove(arg)
-            
+
 
 
     if len(args) != 0:
         sys.stderr.write('Unknown arguments: %s\n' %(str(args), ))
         sys.exit(1)
- 
+
 #    allPackages = [ ('core', 'binutils', '2.28.0-2') ]
     allPackages = getAllPackages()
 
@@ -502,7 +502,7 @@ if __name__ == '__main__':
             priorDBContents = f.read()
     except:
         sys.stderr.write('WARNING: Cannot read old Provides DB at "%s". Will query every package (instead of just updates)\n' %(PROVIDES_DB_LOCATION, ))
-    
+
     if priorDBContents:
         priorDBContents = gzip.decompress(priorDBContents)
 
@@ -538,8 +538,8 @@ if __name__ == '__main__':
                     sys.exit(4)
                 sys.stdout.write('Successfully updated database.\n')
                 sys.exit(0)
-                    
-                
+
+
 
             newPackages = []
             for packageInfo in allPackages:
@@ -572,12 +572,12 @@ if __name__ == '__main__':
                             newPackages.append(packageInfo)
                         else:
                             sys.stderr.write('WARNING: Package %s - %s has an older version!  "%s"  < "%s" ! Did primary repo change to an older mirror? Skipping... (use --force-old-update to do anyway)\n' %(packageInfo[0], pkgName, str(oldVersion), str(newVersion)))
-                            
 
-            
+
+
             allPackages = newPackages
             sys.stdout.write('\nTrimmed number of updates required to %d\n\n' %(len(allPackages), ))
-    
+
             del oldResults
             del newPackages
 
@@ -591,7 +591,7 @@ if __name__ == '__main__':
     if convertOnly: # end if priorDBContents
         sys.stderr.write('Asked to convert old database, but could not read successfully from "%s"\n' %(PROVIDES_DB_LOCATION, ))
         sys.exit(3)
-        
+
 
 
     if not os.access(PROVIDES_DB_LOCATION, os.W_OK):
@@ -668,7 +668,7 @@ if __name__ == '__main__':
                         msg += '\n\n'
                         sys.stderr.write(msg)
                     raise ex1
-            
+
 
             headerStart = data[mtreeIdx:]
 
@@ -697,7 +697,7 @@ if __name__ == '__main__':
                 extractedMtreeFile.close()
             except:
                 pass
-            
+
 
         mtreeData = decompressZlib(compressedData).decode('utf-8')
 
@@ -706,7 +706,7 @@ if __name__ == '__main__':
         results[packageName] = { 'files' : files, 'version' : versionInfo, 'error' : None }
         if isVerbose:
             sys.stdout.write("Got %d files for %s.\n\n" %(len(files), packageName ))
-    
+
     # END: doOne
 
 
@@ -798,7 +798,7 @@ if __name__ == '__main__':
 
         #END: def runThroughPackages
 
-    
+
     splitBy = len(repoUrls)
     if splitBy > MAX_THREADS:
         splitBy = MAX_THREADS;

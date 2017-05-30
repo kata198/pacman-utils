@@ -104,7 +104,7 @@ check_db_needs_regen() {
     [[ $(get_mtime '/var/log/pacman.log' ) -le $(get_mtime "${TRY_DB}") ]] && return 1
     return 0
 }
-    
+
 
 check_can_use_dbfile() {
     TRY_DB="${1}"
@@ -210,6 +210,6 @@ else
     [ $? -ne 0 ] && exit 1;
 fi
 
-    
+
 
 # vim: set ts=4 sw=4 expandtab :
