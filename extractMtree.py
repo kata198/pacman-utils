@@ -402,6 +402,8 @@ def printUsage():
        --threads=N               Use N threads (Max at number of repos)
        --convert                 ONLY convert the old database to the new version
 
+       --force-old-update        Force update on different versions, even if older
+
 ''')
 
 if __name__ == '__main__':
@@ -410,6 +412,8 @@ if __name__ == '__main__':
     #  rarely, if ever, automatically trigger.
     
     convertOnly = False
+
+    forceOldUpdate = False
 
     args = sys.argv[1:]
 
@@ -442,6 +446,9 @@ if __name__ == '__main__':
             args.remove(arg)
         elif arg == '--convert':
             convertOnly = True
+            args.remove(arg)
+        elif arg == '--force-old-update':
+            forceOldUpdate = True
             args.remove(arg)
 
 
@@ -518,6 +525,14 @@ if __name__ == '__main__':
                 else:
                     if not canCompareVersions:
                         newPackages.append(packageInfo)
+                    elif forceOldUpdate:
+                        if isVerbose is True:
+                            oldVersion = VersionString(oldResults[pkgName]['version'])
+                            newVersion = VersionString(pkgVersion)
+                            if newVersion < oldVersion:
+                                sys.stderr.write('WARNING: Package %s - %s has an older version!  "%s"  < "%s" ! Did primary repo change to an older mirror? Doing anyway, because of --force-old-update\n' %(packageInfo[0], pkgName, str(oldVersion), str(newVersion)))
+
+                        newPackages.append(packageInfo)
                     else:
                         oldVersion = VersionString(oldResults[pkgName]['version'])
                         newVersion = VersionString(pkgVersion)
@@ -525,7 +540,7 @@ if __name__ == '__main__':
                         if newVersion > oldVersion:
                             newPackages.append(packageInfo)
                         else:
-                            sys.stderr.write('WARNING: Package %s - %s has an older version!  "%s"  < "%s" ! Did primary repo change to an older mirror? Skipping...\n' %(packageInfo[0], pkgName, str(oldVersion), str(newVersion)))
+                            sys.stderr.write('WARNING: Package %s - %s has an older version!  "%s"  < "%s" ! Did primary repo change to an older mirror? Skipping... (use --force-old-update to do anyway)\n' %(packageInfo[0], pkgName, str(oldVersion), str(newVersion)))
                             
 
             
