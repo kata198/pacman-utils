@@ -38,9 +38,12 @@ else
     fi
 fi
 
-mkdir -p "${DESTDIR}/var/lib/pacman"
+VARDIR="${DESTDIR}/var/lib/pacman"
+VARDIR="$(echo "${VARDIR}" | sed 's|//|/|g')"
 
-install -v -m 644 "data/providesDB" "${DESTDIR}/var/lib/pacman/.providesDB"
+mkdir -p "${VARDIR}"
+
+install -v -m 644 "data/providesDB" "${VARDIR}/.providesDB"
 RET=$?
 if [ $RET -ne 0 ];
 then

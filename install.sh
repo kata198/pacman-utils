@@ -42,9 +42,9 @@ fi
 BINDIR="${DESTDIR}/${PREFIX}/bin"
 BINDIR="$(echo "${BINDIR}" | sed 's|//|/|g')"
 
-mkdir -p "${DESTDIR}/${PREFIX}/bin"
+mkdir -p "${BINDIR}"
 
-install -v -m 755 ${ALL_FILES} "${DESTDIR}/${PREFIX}/bin"
+install -v -m 755 ${ALL_FILES} "${BINDIR}"
 RET=$?
 if [ $RET -ne 0 ];
 then
