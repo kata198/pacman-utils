@@ -930,7 +930,7 @@ if __name__ == '__main__':
 
         pass
         #import pdb; pdb.set_trace()
-        print ( "Success.\n")
+        print ( "\n\nSuccess.\nDatabase size: %d\n" %(len(results), ))
 #        print ( str(locals().keys()) )
         pass
         pass
