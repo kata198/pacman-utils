@@ -158,53 +158,48 @@ def writeDatabase(results):
     # Force this now - it's big!
     del compressed
     gc.collect()
-            
+
+# Try to use shared memory slot, if available
+global USE_TEMP_DIR
+if os.path.exists('/dev/shm'):
+    USE_TEMP_DIR = '/dev/shm'
+else:
+    USE_TEMP_DIR = tempfile.gettmpdir()
 
 def decompressDataSubprocess(data, cmd):
     global MaxBackgroundIO
     global SUBPROCESS_BUFSIZE
+    global USE_TEMP_DIR
     
     fte = None
+    tempFile = None
 
     devnull = open(os.devnull, 'w')
-    pipe = subprocess.Popen(cmd, shell=False, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=devnull, close_fds=True, bufsize=SUBPROCESS_BUFSIZE)
 
     # Short delay to ensure everything is init'd and ready to go
     time.sleep(.002)
     try:
-        # Because these are block compression algorithms, and often contain incomplete data, the output is given after processing
-        #  a number of input blocks. At least for my gzip, it seems to stop output after 32K are sitting on the buffer waiting
-        #  to be read. So doing a write, then close on stdin, then try to read, depending on timing you may just get that 32K
-        #  buffer, after which the remainder will process. This ends up in a messy series of loops and sleeps and whatnot,
-        #  and is finnikey, better handled with python-nonblock
-        #
-        # So we are going to write to the buffer AND read from the buffer at the same time to make sure
-        #   everything goes gravytrain on down the line.
-        bgwrite(pipe.stdin, data, ioPrio=MaxBackgroundIO, closeWhenFinished=True)
-        
-        time.sleep(.0005)
-        bgReader = bgread(pipe.stdout, blockSizeLimit=SUBPROCESS_BUFSIZE, pollTime=0.0, closeStream=False)
 
-        while not bgReader.isFinished:
-            time.sleep(.03)
-            pipe.poll()
-            
-        
-#        pipe.stdin.write(data)
-#        pipe.stdin.close()
-#        
-#        time.sleep(.1)
-#        result = pipe.stdout.read()
-#        nextResult = True
-#        # zcat 
-#        while nextResult != b'':
-#            time.sleep(.05)
-#            nextResult = pipe.stdout.read()
-#            result += nextResult
-#
+
+        tempFile = tempfile.NamedTemporaryFile(mode='w+b', buffering=SUBPROCESS_BUFSIZE, dir=USE_TEMP_DIR, prefix='mtree_', delete=True)
+        tempFile.write(data)
+        tempFile.flush()
+        tempFile.seek(0)
+
+        pipe = subprocess.Popen(cmd, shell=False, stdin=tempFile, stdout=subprocess.PIPE, stderr=devnull, close_fds=True, bufsize=SUBPROCESS_BUFSIZE)
+        time.sleep(.01)
+
+        result = pipe.stdout.read()
+        nextResult = True
+        while True:
+            time.sleep(.005)
+            nextResult = pipe.stdout.read()
+            if nextResult != b'':
+                result += nextResult
+            else:
+                break
+
         pipe.wait()
-
-        result = bgReader.data
 
     except func_timeout.FunctionTimedOut as _fte:
         fte = _fte
@@ -222,6 +217,11 @@ def decompressDataSubprocess(data, cmd):
             pipe.wait()
 
     devnull.close()
+    if tempFile is not None:
+        try:
+            tempFile.close()
+        except:
+            pass
 
     if fte:
         raise_exception( [fte] )
