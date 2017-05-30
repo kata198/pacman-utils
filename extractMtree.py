@@ -272,19 +272,19 @@ def fetchFromUrl(url, numBytes):
     
     devnull = open(os.devnull, 'w')
 
-    if numBytes:
-        limitBytes = '| head -c %d' %(numBytes, )
-    else:
-        limitBytes = ''
-
     if not isVerbose:
-        extraArgs = '--silent'
+        extraArgs = ['--silent']
     else:
-        extraArgs = ""
+        extraArgs = []
 
-    pipe = subprocess.Popen("/usr/bin/curl '-k' %s '%s' %s" %(extraArgs, url, limitBytes), shell=True, stdout=subprocess.PIPE, stderr=devnull)
+    pipe = subprocess.Popen(["/usr/bin/curl", '-k'] + extraArgs + [url],  shell=False, stdout=subprocess.PIPE, stderr=devnull)
     
-    urlContents = pipe.stdout.read()
+    if numBytes:
+        urlContents = pipe.stdout.read(numBytes)
+        pipe.stdout.close()
+    else:
+        urlContents = pipe.stdout.read()
+
     ret = pipe.wait()
 
     devnull.close()
