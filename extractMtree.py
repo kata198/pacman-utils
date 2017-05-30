@@ -34,12 +34,6 @@ except ImportError:
     sys.exit(1)
 
 try:
-    from nonblock import bgwrite, bgread, BackgroundIOPriority
-except ImportError:
-    sys.stderr.write('ERROR: Cannot import python module nonblock ( python-nonblock ) - not installed?\n')
-    sys.exit(1)
-
-try:
     from cmp_version import VersionString
 
     canCompareVersions = True
@@ -76,9 +70,6 @@ isSuperVerbose = False
 
 global SUBPROCESS_BUFSIZE
 SUBPROCESS_BUFSIZE = 1024 * 500 # 500K Bufsize
-
-global MaxBackgroundIO
-MaxBackgroundIO = BackgroundIOPriority(.0009, SUBPROCESS_BUFSIZE, 100, 5)
 
 global SHORT_FETCH_SIZE
 SHORT_FETCH_SIZE = 1024 * 200 # Try to fetch first 200K to find MTREE
@@ -173,7 +164,6 @@ else:
     USE_TEMP_DIR = tempfile.gettmpdir()
 
 def decompressDataSubprocess(data, cmd):
-    global MaxBackgroundIO
     global SUBPROCESS_BUFSIZE
     global USE_TEMP_DIR
 
