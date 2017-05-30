@@ -68,6 +68,9 @@ PROVIDES_DB_LOCATION = "/var/lib/pacman/.providesDB"
 global isVerbose
 isVerbose = False
 
+global isSuperVerbose
+isSuperVerbose = False
+
 global SUBPROCESS_BUFSIZE
 SUBPROCESS_BUFSIZE = 1024 * 500 # 500K Bufsize
 
@@ -270,14 +273,17 @@ def getFiles(dataStr):
 
 def fetchFromUrl(url, numBytes):
     
-    devnull = open(os.devnull, 'w')
+    global isSuperVerbose
+    
+    useStderr = None
 
-    if not isVerbose:
+    if not isSuperVerbose:
         extraArgs = ['--silent']
+        useStderr = open(os.devnull, 'w')
     else:
         extraArgs = []
 
-    pipe = subprocess.Popen(["/usr/bin/curl", '-k'] + extraArgs + [url],  shell=False, stdout=subprocess.PIPE, stderr=devnull)
+    pipe = subprocess.Popen(["/usr/bin/curl", '-k'] + extraArgs + [url],  shell=False, stdout=subprocess.PIPE, stderr=useStderr)
     
     if numBytes:
         urlContents = pipe.stdout.read(numBytes)
@@ -287,7 +293,8 @@ def fetchFromUrl(url, numBytes):
 
     ret = pipe.wait()
 
-    devnull.close()
+    if useStderr is not None:
+        useStderr.close()
 
     if b'404 Not Found' in urlContents and '-x86_64' in url:
         return fetchFromUrl(url.replace('-x86_64', '-any'), numBytes)
@@ -405,6 +412,11 @@ def printUsage():
 
        --force-old-update        Force update on different versions, even if older
 
+       -v                        Verbose (lots of extra output, default is very little)
+       -vv                       Super Verbose - will show super verbose info
+                                  (e.x. progress bars for curl)
+                                 This can get VERY messy if threads > 1
+
 ''')
 
 if __name__ == '__main__':
@@ -425,6 +437,8 @@ if __name__ == '__main__':
 
     # setNumThreads - Used to track if multiple thread arguments were provided
     setNumThreads = False
+
+    superVerboseRE = re.compile('^[-][v][v]+$')
 
     if '--single-thread' in args:
         MAX_THREADS = 1
@@ -451,6 +465,10 @@ if __name__ == '__main__':
         elif arg == '--force-old-update':
             forceOldUpdate = True
             args.remove(arg)
+        elif superVerboseRE.match(arg):
+            isSuperVerbose = True
+            args.remove(arg)
+            
 
 
     if len(args) != 0:
