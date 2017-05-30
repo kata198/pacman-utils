@@ -202,6 +202,7 @@ def decompressDataSubprocess(data, cmd):
         pipe.wait()
 
     except func_timeout.FunctionTimedOut as _fte:
+        result = None
         fte = _fte
         if pipe.poll() is None:
             try:
