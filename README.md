@@ -34,6 +34,11 @@ I will update the *data*/providesDB often (for whatprovides\_upstream).
 
 Only generate your own if you absolutely need to, like if you are freezing a version of archlinux for offline forking for an internal OS.
 
+
+Programs
+========
+
+
 whatprovides
 ------------
 
@@ -95,11 +100,11 @@ If you are not already root, calling "installpackage" will prompt for root passw
 
 
 buildpkg.sh
-----------
+-----------
 
-Builds (from abs) and installs a provided list of packages.
+Builds (from from source) and installs a provided list of packages.
 
-Will automatically refresh abs database if it exceeds 1 day of age (by default).
+Will automatically pull the sources from archlinux svn, build, and install package.
 
 It's a set-it-and-forget-it build system! If any errors occur, they will be reported at the bottom. No prompts, no mess, no fuss!
 

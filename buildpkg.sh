@@ -6,12 +6,8 @@
 #   This code is licensed under the terms of the APACHE license version 2.0
 #
 # buildpkg.sh - Builds and installs one or more packages.
-#   Run as regular user, and provide as arguments a list of packages (available through abs)
+#   Run as regular user, and provide as arguments a list of packages
 
-# ABS_STALE_AFTER - Max age in seconds of abs dir. Will refresh after this time.
-#  86400 = one day
-
-ABS_STALE_AFTER=86400
 
 
 echoerr() {
