@@ -1,4 +1,20 @@
 
+Package Install
+---------------
+
+Arch packages are also available at:
+
+https://github.com/kata198/pacman-utils-pkg       - Core package
+
+https://github.com/kata198/pacman-utils-data-pkg  - The data
+
+
+"extras" are not included yet in a package.
+
+
+Manual Install
+--------------
+
 To install programs:
 
     ./install.sh  # as root, install to /usr/bin

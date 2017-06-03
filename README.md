@@ -5,6 +5,26 @@ Some utils and helper scripts for archlinux packages
 How to install
 ==============
 
+Via Package/pacman
+------------------
+
+You can get all but "extras" through standard archlinux packages.
+
+These are not yet in any primary repo, but you can download the tarballs or checkout from:
+
+Core Package (programs):  https://github.com/kata198/pacman-utils-pkg
+
+Data Package (data):      https://github.com/kata198/pacman-utils-data-pkg
+
+"Extra" is not available in a pacakage.
+
+
+Manual Install
+--------------
+
+How to install from a checkout of this source
+
+
 **Install Programs:**
 
 As root, run ./install.sh 
