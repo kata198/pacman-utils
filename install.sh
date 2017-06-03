@@ -3,7 +3,7 @@
 # Installs all the pacman-utils
 #  use ./install.sh PREFIX=$HOME to install to local home dir.
 
-ALL_FILES="installpackage buildpkg.sh whatprovides whatprovides_upstream extractMtree.py mkgcdatar getpkgs"
+ALL_FILES="installpackage buildpkg.sh whatprovides whatprovides_upstream extractMtree.py mkgcdatar getpkgs abs2"
 
 for arg in "$@";
 do

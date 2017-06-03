@@ -66,3 +66,27 @@ Example Usage:
 
 	buildit.sh tar xz zip  # This will compile and install "tar" "xz" and "zip" packages based on settings in /etc/makepkg.conf
 
+
+
+abs2
+----
+
+
+Sorta supports some old "abs-style" development, whilst not
+overwhelimg the archlinux servers as developers have requested
+
+Fetches a package into a new "abs2" dir style, which is shared amongst
+all users in the "users" group.
+
+Arguments are individual package names, and will fetch that package.
+
+
+Example Usage:
+
+	abs2 zip  # Get the "zip" package
+
+	NEW_DIR=$(abs2 -q zi[)  # Get the directory of the zip package
+	cd ${NEW_DIR}/trunk     # Go to trunk dir therein
+
+
+You should NOT modify the contents of these manually, but copy them off to /usr/src/arch

@@ -1,0 +1,139 @@
+#!/bin/bash
+
+## Copyright (c) 2017 Timothy Savannah All Rights Reserved
+#       Licensed under terms of Apache 2.0 License
+
+# abs2 - 
+#
+#   Sorta supports some old "abs-style" development, whilst not 
+#     overwhelimg the archlinux servers as developers have requested
+#
+#   Fetches a package into a new "abs2" dir style, which is shared amongst
+#    all users in the "users" group.
+#
+#   Arguments are individual package names, and will fetch that package.
+#
+
+
+if [ -z "${ABS2_DIR}" ];
+then
+    ABS2_DIR="/var/abs2"
+else
+    # Strip trailing slash
+    ABS2_DIR="$(echo "${ABS2_DIR}" | sed -e 's|[/][/]*$||g')"
+fi
+
+_init_abs2() {
+    [ -d "${ABS2_DIR}" ] && return;
+    # Handle conversion maybe here? Right now only one DB version
+    
+    mkdir ${ABS2_DIR}
+    if [ $? -ne 0 ];
+    then
+        echo "Failed to create ${ABS2_DIR}. Run once as root user." >&2
+        if [ "`whoami`" != "root" ];
+        then
+            echo "Rerunning as root: "
+            sudo $0 "$@"
+            exit $?
+        fi
+    fi
+    chmod 2775 ${ABS2_DIR}
+    chgrp users "${ABS2_DIR}"
+    
+    echo "0.1" > "${ABS2_DIR}/.abs2_version"
+}
+
+get_repo_for_package() {
+    PKG_NAME="${1}"
+
+    SEARCH_RESULT="$(pacman -Ss "${PKG_NAME}" | grep -E "^[^/][^/]*/${PKG_NAME} ")"
+    if [ $? -ne 0 ];
+    then
+        echo "Cannot find repo for package: ${PKG_NAME}" >&2
+        return 1;
+    fi
+    
+    echo "$(echo "${SEARCH_RESULT}" | sed -e 's|/.*||g')"
+    return 0;
+}
+
+do_package() {
+    PKG_NAME="${1}"
+
+    REPO="$(get_repo_for_package "${PKG_NAME}")"
+    if [ $? -ne 0 ];
+    then
+        # Function prints error message, so just raise
+        return 1;
+    fi
+
+    if [ "$(echo "${REPO}" | wc -l)" -gt 1 ];
+    then
+        MULTI_REPOS=1
+        declare -a REPOS
+
+        NUM=0
+        for item in ${REPO};
+        do
+            declare REPOS[$NUM]="${item}"
+            NUM=$(( $NUM + 1 ))
+        done
+    else
+        declare -a REPOS
+        declare REPOS[0]="${REPO}"
+    fi
+
+    OLD_DIR="$(pwd)"
+    cd "${ABS2_DIR}"
+
+    for repo in "${REPOS[@]}";
+    do
+        if [ "$repo" = "core" -o "${repo}" = "extra" -o "${repo}" ];
+        then
+            DIR="packages"
+        elif [ "$repo" = "community" -o "$repo" = "multilib" ];
+        then
+            DIR="community"
+        else
+            echo "Unknown repo: ${repo}"
+            continue
+        fi
+
+        cd "${DIR}"
+        svn up "${PKG_NAME}" >&2
+        
+        cd ..
+        echo "$(realpath "${DIR}/${PKG_NAME}")"
+
+    done
+
+    cd "${OLD_DIR}"
+
+}
+            
+
+if [ "$1" = "--help" ];
+then
+    cat -- <<EOT
+Usage: abs2 [package name]
+
+   Downloads the latest "package name" - and outputs the directory to find
+     the trunk version.
+EOT
+    exit 0;
+fi
+
+if [ "$1" = "-q" ];
+then
+    shift;
+    "$0" "$@" 2>/dev/null
+    exit $?
+fi
+
+_init_abs2
+
+for pkg in "$@";
+do
+    do_package "${pkg}"
+done
