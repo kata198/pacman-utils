@@ -1,0 +1,89 @@
+#!/bin/bash
+
+## Copyright (c) 2017 Timothy Savannah All Rights Reserved
+#       Licensed under terms of Apache 2.0 License
+
+# archsrc-getpkg
+#
+#   Download the latest of a package's build files into the current directory.
+#   
+#   You probably want to run this in /usr/src/arch to go along with the rest of these
+#    tools
+#
+if [ "$1" = "--help" ];
+then
+    cat -- >&2 <<EOT
+Usage: archsrc-getpkg - Downloads the latest build files for a package into current dir.
+
+  You probably want to run this in /usr/src/arch, which is where pacman-utils expects you to
+    checkout packages.
+EOT
+    exit 0;
+fi
+
+if [ $# -ne 1 ];
+then
+    echo "Only a single argument is supported. Loop this program if you need to do multiple packages." >&2
+    echo "  Use --help for help." >&2
+    exit 1;
+fi
+
+if ( echo "$1" | grep -q '/' ) || [ "$1" = ".." -o "$1" = "." ];
+then
+    echo "Cannot be a directory. Must be a package name." >&2
+    exit 1;
+fi
+
+PKG_NAME="$1"
+
+if [ -d "${PKG_NAME}" ];
+then
+    if [ -d "${PKG_NAME}.bak" ];
+    then
+        echo "${PKG_NAME} exists and ${PKG_NAME}.bak exists."
+        x="z"
+        while [ $x != "y" -a "$x" != "Y" -a "$x" != "n" -a "$x" != "N" ];
+        do
+            printf "%s" "Remove old backup? (y/n):"
+            read x;
+        done
+
+        if [ "$x" = "n" -o "$x" = "N" ];
+        then
+            printf "%s\n" "Aborting based on user input." >&2
+            exit 1;
+        fi
+        rm -Rf "${PKG_NAME}.bak"
+        if [ $? -ne 0 ];
+        then
+           echo "Failed to remove '${PKG_NAME}.bak'" >&2
+           exit 1;
+        fi
+    fi
+    echo "Backing up ${PKG_NAME} to ${PKG_NAME}.bak..."
+    mv "${PKG_NAME}" "${PKG_NAME}.bak"
+    if [ $? -ne 0 ];
+    then
+        echo "Unable to move '${PKG_NAME}' to '${PKG_NAME}.bak" >&2
+        exit 1;
+    fi
+fi
+
+SRC_DIR="$(abs2 -q "${PKG_NAME}")"
+RET=$?
+if [ ${RET} -ne 0 ];
+then
+    echoerr "Error: ${RET} from abs2. Rerunning for error messages..."
+    abs2 "${PKG_NAME}"
+
+    exit $?
+fi
+
+cp -R "${SRC_DIR}/trunk" "${PKG_NAME}"
+if [ $? -ne 0 ];
+then
+    echo "Faied to move '${SRC_DIR}/trunk' to '${PKG_NAME}'" >&2
+    exit 1;
+fi
+
+echo "Checked out latest ${PKG_NAME} to `pwd`/${PKG_NAME}"

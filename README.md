@@ -2,6 +2,15 @@
 Some utils and helper scripts for archlinux packages
 
 
+How to install
+==============
+
+As root, run ./install.sh followed by ./install\_data.sh . Please use the install\_data.sh instead of running your own!
+
+
+
+I will update the *data*/providesDB often (for whatprovides\_upstream). Only generate your own if you absolutely need to, like if you are freezing a version of archlinux for offline forking for an internal OS.
+
 whatprovides
 ------------
 
@@ -90,3 +99,18 @@ Example Usage:
 
 
 You should NOT modify the contents of these manually, but copy them off to /usr/src/arch
+
+
+archsrc-getpkg
+--------------
+
+Gets the latest version of an archlinux package build files, and checks them out to current dirctory.
+
+Optionally backs up the old directory. Will not remove data without user input.
+
+
+Profile Guided Optimization
+===========================
+
+Profile guided optimization is easily supported and incorporated with archlinux and these tools.
+
