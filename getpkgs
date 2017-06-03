@@ -1,27 +1,176 @@
 #!/bin/bash
+#
+## Copyright (c) 2017 Timothy Savannah All Rights Reserved
+#       Licensed under terms of Apache 2.0 License
 
+# getpkgs - 
+#     If no arguments, prints all package names in current directory
+#         (like pacman -U `getpkgs`)
+#
+#     For multiple args:
+#           If argument is a directory,
+#              Prints all package names in that directory
+#           If argument is a file,
+#              Prints if filename matches layout of a package
+#           So if a glob expression, will process all directories and files
+#             at that level and print the package names, for ease of package
+#             management, especially when building multiple packages locally.
+#
+#
+# DEVELOPERS:
+#   You may set env  __API_ONLY=1
+#    prior to sourcing this file to just import the API
+#    functions.
+#
+#   i.e.   __API_ONLY=1 source `which getpkgs`
+#
+#   Otherwise (like on direct execution), it will execute
+#     "getpkgs" function with the commandline arguments
+
+
+
+#
+# _strip_trailing_slash - Strip trailing slash on FIRST argument
+#
+#          Arg1 - (Be sure to quote) - Remove any trailing /, 
+#                  e.x. /abc/def/      -> /abc/def
+#                      /abc/def/////// -> /abc/def
+#                      /abc/def        -> /abc/dev
+#                      /               -> /
+#                      "" (empty str)  -> "" (empty str)
+#
+#
+#          Arg2..N - IGNORED
+#
+#        Return - None
+_strip_trailing_slash() {
+    _STS_VAL="${1}"
+
+    # Differentiate between empty string and / , so after
+    #  strip below we can assume empty string to be "//" or similar
+    if [ -z "${_STS_VAL}" -o "${_STS_VAL}" = "/" -o "${_STS_VAL}" ];
+    then
+        echo "${_STS_VAL}"
+        return
+    fi
+
+    # Strip the trailing slashes
+    _STS_RES="$(echo "${_STS_VAL}" | sed -e 's|[/][\/]*$||g')"
+
+    # If empty string, was only slashes, e.x. // /////
+    [ -z "${_STS_RES}" ] && _STS_RES='/'
+
+    echo "${_STS_RES}"
+}
+ 
+
+#
+# getpkgs - Get package files from a directory
+#
+#    No args - Gets package files from current directory
+#    If args:
+#      For each arg:
+#              If arg is directory - Prints all packages in
+#                                      that directory
+# 
+#              If arg is file      - Prints filename if is a package
+#
+#    So glob expressions, like "/usr/src/arch/*"  would show
+#      Any packages in the direct subdirs (built packages),
+#      And any packages that may happen to be at /usr/src/arch level
+#
+#   Output:
+#      Echos all matching packages, or nothing (even if glob provided)
+#        if no matches
+#
+#    Return -
+#              0 (true) - At least one package was found
+#              1 (false - No packages found in any arg
 getpkgs()  {
+    # Capture current value of nullglob
     if ( shopt nullglob | grep -q 'on$' );
     then
         HAD_NULLGLOB=1
     else
-        HAS_NULLGLOB=0
+        HAD_NULLGLOB=0
         shopt -s nullglob
     fi
-    if [ ! -z "${1}" ];
+
+    RET=1
+
+    if [ $# -eq 0 ] || [ $# -eq 1 -a -z "$1" ];
     then
-        PKG_FILES="$(echo *${1}*.pkg.tar.xz)"
+        pkgvals="."
     else
-        PKG_FILES="$(echo *.pkg.tar.xz)"
+        pkgvals="$@"
     fi
 
-    if [ ! -z "${PKG_FILES}" ];
-    then
-        printf "%s" "${PKG_FILES}"
-        return 0; 
-    else
-        return 1;
-    fi
+#    echo "pkgvals: ${pkgvals}"
+
+    for pkgval in ${pkgvals};
+    do
+#        echo "pkgval: ${pkgval}"
+        [ -z "${pkgval}" ] && continue;
+
+        if [ -d "${pkgval}" ];
+        then
+            STRIPPED_VAL="$(_strip_trailing_slash "${pkgval}")"
+            PKG_FILES="$(echo ${STRIPPED_VAL}/*.pkg.tar.xz | tr ' ' '\n')"
+        else
+            if ( echo "${pkgval}" | grep -q '.*[\.]pkg[\.]tar[\.]xz$' );
+            then
+                PKG_FILES="${pkgval}"
+            else
+                
+                PKG_FILES=
+            fi
+        fi
+
+        if [ ! -z "${PKG_FILES}" ];
+        then
+            printf "%s\n" "${PKG_FILES}"
+            RET=0; 
+        fi
+    done
+
+   if [[ "${HAD_NULLGLOB}" -eq 0 ]];
+   then
+        shopt -u nullglob;
+   fi
+
+   return ${RET}
 }
 
-getpkgs "$@"
+
+
+if [ "${__API_ONLY}" != "1" ];
+then
+    if [ "$#" -eq 1 -a "$1" = "--help" ];
+    then
+        cat -- <<EOT
+Usage: getpkgs ([values])
+  Prints a list of packages found in a given directory or pattern
+
+If no arguments, prints all packages in current directory,
+i.e.
+    pacman -U \`getpkgs\`
+
+If arguments:
+    If a glob expression (quoted) e.x. "/usr/src/arch/*", 
+    will handle the null-unroll (i.e. if unrolls to nothing, no value)
+    with each entry same as an argument
+
+    If a directory:  Prints all the packages in that directory (no subdirs)
+    If a file:       Echos the filename, if it matches package filename pattern
+
+
+Will print matched packages, one per line. This makes it apt to work with pipes to grep, etc,
+  as well as for substitution into arguments for other commandline programs
+EOT
+    else
+        getpkgs "$@"
+        exit $?
+    fi
+fi
+
+# vim: set ts=4 sw=4 expandtab :
