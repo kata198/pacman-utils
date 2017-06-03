@@ -362,7 +362,7 @@ def getRepoUrls():
     nextLine = True
     repos = []
 
-    repoRE = re.compile('^[ \t]*Server[ \t]*=[ \t]*(?P<server_url>.+)$')
+    repoRE = re.compile('^[ \t]*[sS]erver[ \t]*=[ \t]*(?P<repo_url>[^ \t#]+)[ \t]*([#].*){0,1}$')
 
     with open('/etc/pacman.d/mirrorlist', 'rt') as f:
         nextLine = f.readline()
@@ -370,8 +370,8 @@ def getRepoUrls():
             matchObj = repoRE.match(nextLine.strip())
             if matchObj:
                 groupDict = matchObj.groupdict()
-                if groupDict['server_url']:
-                    ret = groupDict['server_url'].replace('$repo', '%s').replace('$arch', USE_ARCH)
+                if groupDict['repo_url']:
+                    ret = groupDict['repo_url'].replace('$repo', '%s').replace('$arch', USE_ARCH)
                     while ret.endswith('/'):
                         ret = ret[:-1]
 
