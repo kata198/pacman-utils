@@ -99,8 +99,8 @@ Passing -d followed by a directory name, like  *installpackage -d mypkgs* would 
 If you are not already root, calling "installpackage" will prompt for root password and su into root to perform the operation.
 
 
-buildpkg.sh
------------
+archsrc-buildpkg
+----------------
 
 Builds (from from source) and installs a provided list of packages.
 

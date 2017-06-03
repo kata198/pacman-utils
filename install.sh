@@ -3,7 +3,7 @@
 # Installs all the pacman-utils
 #  use ./install.sh PREFIX=$HOME to install to local home dir.
 
-ALL_FILES="installpackage buildpkg.sh whatprovides whatprovides_upstream extractMtree.py mkgcdatar getpkgs abs2 archsrc-getpkg pacman-mirrorlist-optimize"
+ALL_FILES="installpackage archsrc-buildpkg whatprovides whatprovides_upstream extractMtree.py mkgcdatar getpkgs abs2 archsrc-getpkg pacman-mirrorlist-optimize"
 
 for arg in "$@";
 do
@@ -54,8 +54,12 @@ then
     exit ${RET}
 fi
 
-cd /usr/bin
-ln -sf buildpkg.sh archsrc-buildpkg.sh # Right now, just symlink these two names
+cd "${BINDIR}"
+rm -f archsrc-buildpkg.sh buildpkg.sh
+
+# buildpkg.sh
+echo "Creating link from ${BINDIR}/archsrc-buildpkg -> ${BINDIR}/buildpkg.sh  (new name -> old name)"
+ln -sf archsrc-buildpkg buildpkg.sh # Right now, just symlink these two names
 
 
 #install -v -m 644 "data/providesDB" "${DESTDIR}/var/lib/pacman/.providesDB"
