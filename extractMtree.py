@@ -8,7 +8,55 @@
 #  extractMtree.py - Extracts the mtree from all available packages,
 #    attempting short-reads where possible to limit bandwidth,
 #    and assemble a compressed json database for use by whatprovides_upstream
+#
+# IMPORTANT:
+#
+#  PLEASE - ENSURE THAT YOU HAVE AT LEAST 6 MIRRORS UNCOMMENTED IN
+#    /etc/pacman.d/mirrorlist .
+#
+#  You can run with less, but you will be prompted, unless you specify
+#   an alternate number of threads (see --help)
+#
+#
+#  REPO Friendly -
+#    The MTREE is at the start of the tar archive, and is almost always found
+#     within the first 200K. We try to download just the first 200K of each package first,
+#     which will be a total of 1.9G split amongst the mirrors, using 6 mirrors (default),
+#     means each mirror will be hit by, on average, just 300MB in order to build one of these files.
+#
+#   Of course, a few files are in different-than-stard tar formats (Why? Someone is using an alternate
+#    than GNU tar and submitting packages, methinks. Or maybe is has something to do with an optional
+#    GPG signing that works different on some signed packages than others... either way, for these
+#    snall handful of packages, we have to download the full archive package.
+#
+#   Also, by default, only UPDATES will be processed. The existing database is scanned and imported,
+#    and the versions compared against the latest versions. If a mismatch, default (can be slightly expanded, see #usage)
+#     is if the version is lower, then download and refresh the list. Can be changed to just "if different" (needed sometimes,
+#     like if pkg version was a git commit and then changed to a version, it could be seen as having decreased version)
+#
+#   This means only the FIRST generation will average 300MB load to repos, and subseqant updates (I generally update
+#     once a week which equals about 300 package updates) 
+#      yield only 60MB total, ** average 6MB per repo! **
+#
+#   This means that the repos should get less traffic from this application than from my normal package update traffic
+#
+#  IMPORTANT NOTE:
+#
+#    Even though, as mentioned the load added to repos is about the size of a -Syu operation from a signle client for first generation,
+#      PLEASE
+#      PLEASE
+#      PLEASE
+#            Don't generate your own providesDB unless you absolutely HAVE to. And if you do, PLEASE download my provided
+#            database and update from that.
+#            This will shrink your bandwidth requirements to, on average, from 300MB per repo, to 10MB per repo.
+#
+#   I don't want to have this tool add extra load to the already generous folks who provide
+#    the mirrors
 
+
+# TODO: In major need of a refactor. There's a lot of code, but I really want to
+#   keep this as a standalone module.. So maybe just split it into some classes
+#   to make it neater.
 
 import copy
 import gzip
@@ -98,7 +146,7 @@ try:
     unicode
     ALL_STR_TYPES.append(unicode)
 except:
-    pass
+    unicode = str
 
 ALL_STR_TYPES = tuple(ALL_STR_TYPES)
 
@@ -393,6 +441,117 @@ def createThreads(splitBy, allPackages, repoUrls, resultsRef, failedPackages):
 
     return threads
 
+def prompt(promptMsg, allowedResults=None, tryAgainMsg=None):
+    '''
+        prompt - Prompt the user for input.
+            Optionally, ensure that the input matches a series of "allowed inputs" (e.x. "y" or "n")
+             and repeat the prompt message until valid input is provided.
+
+        @param promptMsg <str> - Message to print prior to user input.
+            Likely you want this not to contain a newline, line:   'continue? (y/n): '
+
+        @param allowedResults <None/list/tuple/lambda> Default None, 
+
+           If list/tuple:
+             if value does not evaluate to False, 
+             #promptMsg will be repeated until input is provided which falls into a member of #allowedResults
+
+           If lambda / callable (as __call__ ) - Will be called with the value, return True if allowed, False otherwise.
+
+              MAYBE FUTURE TODO:  If a string is returned, it will be used in lieu of the user's input (like if you want to automatically
+                convert to uppercase).
+
+        @param tryAgainMsg <None/str/lambda> Default None, If provided, each time the input frmo user
+            does not fall within the #allowedResults, this message will be printed before
+            prompting again. 
+
+            IF string: This message is used. If '%s' is contained, every occurance will be replaced with the user's input.
+            IF lambda (or anything implementing __call__, i.e. methods, classes, etc:
+              Passed the user input. Must return a string to be output. For example: Suggest close field, note a removed field, etc
+
+            This is automatically appended with a newline, generally I find it best to
+              prefix with a newline and end with a newline (so final result is 2 end newlines)
+              to ensure visibility.
+
+            Example:   tryAgainMsg="\nInvalid response: '%s'\n"
+
+        @return <str> - Input from user
+            If #allowedResults was provided, is guarenteed to be a member of that list
+    '''
+
+    if not allowedResults:
+        checkResult = lambda x : True
+    else:
+        allowedResultsIsCallable = False
+        try:
+            allowedResults.__call__
+            allowedResultsIsCallable = True
+            checkResult = allowedResults
+        except:
+            pass
+
+        if not allowedResultsIsCallable:
+
+            if not issubclass(allowedResults.__class__, (list, tuple, set)):
+                try:    
+                    reprVal = repr(allowedResults)
+                except Exception as erEx:
+                    reprVal = '[ Exception < %s > \"%s\" fetching repr. ]' %( erEx.__class__.__name__, str(erEx) ) 
+                raise ValueError('allowedResults argument must be a subclass of list or tuple, or callable ( __call__ ). Got: < %s >  %s' %( allowedResults.__class__.__name__, reprVal ) )
+
+            checkResult = lambda x : x in allowedResults
+
+    # Explicitly set "hasTryAgain", since we allow anything with a __call__, 
+    #   something may have a __bool__ which calls a database field or who knows what,
+    #   so cache that result and ensure we are just testing a simple value
+    if tryAgainMsg:
+        tryAgainMsgIsCallable = False
+        hasTryAgain = True
+        try:
+            tryAgainMsg.__call__
+            tryAgainMsgIsCallable = True
+        except:
+            tryAgainMsgIsCallable = False
+
+        if tryAgainMsgIsCallable is False:
+            if not issubclass(tryAgainMsg.__class__, (str, unicode)):
+                raise ValueError('tryAgainMsg is not False, but is also not a callable (has __call__ method), nor a string. Is a: ' + str(tryAgainMsg.__class__.__name__) )
+    else:
+        hasTryAgain = False
+
+
+    sys.stdout.write(promptMsg)
+    sys.stdout.flush()
+
+    # Strip the trailing newline from readline()
+    result = sys.stdin.readline()[:-1]
+    while not checkResult(result):
+        thisMsg = ''
+        if hasTryAgain is True:
+
+            thisMsg = None
+            if tryAgainMsgIsCallable is False:
+                # Instead of using a format string, use a replace.
+                #  Since only one variable is being subbed, this allows them
+                #   to use it multiple times.
+                if '%s' in tryAgainMsg:
+                    thisMsg = tryAgainMsg.replace('%s', result)
+                else:
+                    # Strings passed by value, no need to copy
+                    thisMsg = tryAgainMsg
+            else:
+                thisMsg = tryAgainMsg( result )
+
+        print ( thisMsg )
+
+        sys.stdout.write(promptMsg)
+        sys.stdout.flush()
+
+        result = sys.stdin.readline()[:-1]
+
+    return result
+
+
 def printUsage():
     sys.stderr.write('''Usage: extractMtree.py (options)
   Downloads and extracts the file list from the repo.
@@ -420,6 +579,11 @@ if __name__ == '__main__':
     #  manually (since everything in main thread is in one scope, it will
     #  rarely, if ever, automatically trigger.
 
+
+
+    ################################
+    ######## HANDLE ARGUMENTS
+    #############################
     convertOnly = False
 
     forceOldUpdate = False
@@ -477,6 +641,9 @@ if __name__ == '__main__':
         sys.stderr.write('Unknown arguments: %s\n' %(str(args), ))
         sys.exit(1)
 
+    ##############################################
+    ######## READ PACKAGE LIST AND OLD DB
+    ########################################
 #    allPackages = [ ('core', 'binutils', '2.28.0-2') ]
     allPackages = getAllPackages()
 
@@ -611,6 +778,9 @@ if __name__ == '__main__':
 
     print ( "Using repos from /etc/pacman.d/mirrorlist:\n\t%s\n" %(repoUrls, ))
 
+    ##############################################
+    ######## doOne - Do a single package
+    ########################################
     def doOne(repoName, packageName, versionInfo, resultsRef, repoUrl, fetchedData=None, useTarMod=False):
         global isVerbose
         global SHORT_FETCH_SIZE
@@ -707,7 +877,13 @@ if __name__ == '__main__':
 
     failedPackages = []
 
+    ###################################################
+    ######## runThroughPackages -
+    #########    Run through a list of packages
+    #########     on a list of repos
+    #############################################
     def runThroughPackages(allPackages, resultsRef, failedPackages, repoUrls, timeout=SHORT_TIMEOUT, longTimeout=LONG_TIMEOUT):
+        # repoUrls - First is primary, others may or may not be used
         global isVerbose
 
         results = resultsRef()
@@ -789,9 +965,28 @@ if __name__ == '__main__':
         #END: def runThroughPackages
 
 
-    splitBy = len(repoUrls)
-    if splitBy > MAX_THREADS:
-        splitBy = MAX_THREADS;
+    ##############################################
+    ######## Start up threads and
+    ########   begin processing
+    ########################################
+    numRepos = splitBy = len(repoUrls)
+    if splitBy == 0:
+        sys.stderr.write('No uncommented repos in /etc/pacman.d/mirrorlist !\n\n')
+        sys.exit(1)
+
+    if numRepos < MAX_THREADS:
+        sys.stdout.write('WARNING: Number of available repos [ %d ] is less than the configured number' %(numRepos, ) +\
+            ' of threads [%d].\nRecommended to uncomment more repos. See --help for changing nubmer of threads.\n\n' %(MAX_THREADS, ))
+
+        shrinkThreads = prompt("\nLimit threads to %d and continue? (y/n): " %(numRepos, ), ('y', 'Y', 'n', 'N'))
+        if shrinkThreads in ('n', 'N'):
+            sys.stderr.write('\nAborting based on user input.\n\n')
+            sys.exit(1)
+
+        MAX_THREADS = splitBy
+    elif numRepos > MAX_THREADS:
+        # They have more repos defined
+        splitBy = MAX_THREADS
 
     numPackages = len(allPackages)
 
@@ -830,6 +1025,10 @@ if __name__ == '__main__':
     del allPackages
     gc.collect()
 
+    ##############################################
+    ######## If packages failed, wait a bit,
+    ########  refresh database, and try again
+    ########################################
     try: # TODO: REMOVE ME 
 
 
@@ -874,6 +1073,11 @@ if __name__ == '__main__':
             del failedPackages
             gc.collect()
 
+            ##################################################
+            ######## If still failures,
+            ########  refresh and check if newer version
+            ########  and retry those pkgs with newer version
+            ##########################################
             if newFailedPackages:
                 sys.stderr.write('After completing, still %d failed packages.\nFailed after retry: %s\n\n' %(len(newFailedPackages), '\n'.join(['\t[%s] %s-%s  \t%s' %(failedP[0], failedP[1], failedP[2], results[failedP[1]]['error'] ) for failedP in newFailedPackages]) ) ) 
 
@@ -913,6 +1117,10 @@ if __name__ == '__main__':
 
             # END: if newFailedPackages
 
+
+        ##############################################
+        ######## Write resulting database to file
+        ########################################
         results['__vers'] = LATEST_FILE_FORMAT
 
 
@@ -940,4 +1148,4 @@ if __name__ == '__main__':
         pass
         pass
 
-    # vim: set ts=4 sw=4 expandtab :
+# vim: set ts=4 sw=4 expandtab :
