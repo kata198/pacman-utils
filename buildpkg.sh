@@ -18,14 +18,6 @@ echoerr() {
     echo "$@" >&2
 }
 
-if [ "$1" = "--help" -o "$1" = "-h" ];
-then
-    echoerr "Usage: buildpkg.sh [package_name] (Optional: [package_name2] [package_name..N])"
-    echoerr "   Builds listed packages as current user, and then installs resulting packages as root."
-    echoerr;
-    exit 1
-fi
-
 
 if [ "$1" != "_secret_arg_" ];
 then
@@ -84,42 +76,23 @@ exiterr() {
     exit 2
 }
 
-need_update_abs() {
-    if [ ! -f "/var/abs/.buildpkg_last_fetch" ];
-    then
-        return 0;
-    fi
-    NOW="$(date +%s)"
-    THEN="$(cat /var/abs/.buildpkg_last_fetch)"
+update_abs() {
 
-    [ $(( ${NOW} - ${THEN} )) -ge ${ABS_STALE_AFTER} ] && return 0;
-    return 1;
-}
+    ABS_DIR="$(abs2 "${1}")"
 
-
-maybe_update_abs() {
-    if ! ( need_update_abs );
-    then
-        return;
-    fi
-
-    /usr/bin/abs >/dev/null
-    if [ $? -ne 0 ];
-    then
-        echoerr "Failed to refresh ABS database."
-    else
-        echoerr "Refreshed ABS database."
-    fi
-    
-    NOW="$(date +%s)"
-    printf "%s" "${NOW}" > /var/abs/.buildpkg_last_fetch;
+    echo "${ABS_DIR}"
 }
 
 [ ! -d "/usr/src/arch" ] && mkdir -p '/usr/src/arch'
 
-maybe_update_abs;
 
 PKGNAME="$1"
+
+ABS_DIR="$(update_abs "${PKGNAME}")"
+if [ -z "${ABS_DIR}" ];
+then
+    exiterr "Failed to find ABS2 dir.\n"
+fi
 
 if [ -d "/usr/src/arch/$PKGNAME" ];
 then
@@ -127,21 +100,7 @@ then
     mv "/usr/src/arch/${PKGNAME}" "/usr/src/arch/${PKGNAME}.bak" || exiterr "Cannot move old directory to .bak"
 fi
 
-SUCCESS=0
-for repo in "core" "extra" "community" "testing";
-do
-    if [ -d "/var/abs/$repo/$PKGNAME" ];
-    then
-        cp -R "/var/abs/$repo/$PKGNAME" "/usr/src/arch/$PKGNAME" || exiterr "Cannot copy from abs to /usr/src/arch"
-        SUCCESS=1
-        break
-    fi
-done
-
-if [ $SUCCESS -ne 1 ];
-then
-    exiterr "Failed to find $PKGNAME in /var/abs"
-fi
+cp -R "${ABS_DIR}/trunk" "/usr/src/arch/${PKGNAME}" || exiterror "Cannot copy ${ABS_DIR}/trunk to /usr/src/arch/${PKGNAME}"
 
 chown -R "${BUILD_AS}" "/usr/src/arch/$PKGNAME"
 pushd "/usr/src/arch/$PKGNAME"
