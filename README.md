@@ -10,7 +10,7 @@ Via Package/pacman
 
 You can get all but "extras" through standard archlinux packages.
 
-These are not yet in any primary repo, but you can download the tarballs or checkout from:
+These are not yet in any primary repo, but you can download prebuilt pacvkages under "releases", or download/checkout the source tarballs from:
 
 Core Package (programs):  https://github.com/kata198/pacman-utils-pkg
 
