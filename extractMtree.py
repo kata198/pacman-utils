@@ -62,6 +62,7 @@ import copy
 import gzip
 import os
 import json
+import random
 import re
 import subprocess
 import sys
@@ -383,6 +384,21 @@ def getRepoUrls():
     if not repos:
         raise Exception('Failed to find repo URL from /etc/pacman.d/mirrorlist. Are any not commented?')
     return repos
+
+
+def shuffleLst(lst):
+    if not lst:
+        return list()
+
+    lstCopy = lst[:]
+    ret = []
+
+    while len(lstCopy) > 1:
+        ret.append( lstCopy.pop( random.randint(0, len(lstCopy)-1) ) )
+
+    ret.append( lstCopy.pop() )
+
+    return ret
 
 
 class RefObj(object):
@@ -1035,6 +1051,11 @@ if __name__ == '__main__':
         if failedPackages:
             sys.stderr.write("Need to retry %d packages. Resting for a minute....\n\n" %(len(failedPackages), ))
             time.sleep(60)
+
+            if MAX_THREADS > 1:
+                # Shuffle up the order to try different mirrors
+                failedPackages = shuffleLst(failedPackages)
+
             if os.getuid() != 0:
                 sys.stderr.write('WARNING: Cannot refresh pacman database.\n')
             else:
@@ -1099,6 +1120,8 @@ if __name__ == '__main__':
                     # Get a list of any packages that have updated since we started, and retry them
                     updatedPackages = [packageInfo for packageInfo in newPackages if packageInfo[1] in oldVersions and oldVersions[packageInfo[1]] != packageInfo[2]]
 
+
+                    # Will try every mirror
                     stillFailedPackages = []
                     try:
                         runThroughPackages( updatedPackages, resultsRef, stillFailedPackages, repoUrls, timeout=LONG_TIMEOUT)
