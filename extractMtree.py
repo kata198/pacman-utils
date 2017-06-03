@@ -453,11 +453,11 @@ if __name__ == '__main__':
             args.remove(arg)
         elif arg.startswith('--threads='):
             try:
-                NUM_THREADS = int(arg[ len('--threads=') : ])
+                MAX_THREADS = int(arg[ len('--threads=') : ])
             except:
                 sys.stderr.write('Number of threads must be a digit! Problem with arg:   "%s"\n\n' %(arg, ))
                 sys.exit(1)
-            if setNumThreads is True and NUM_THREADS != 1:
+            if setNumThreads is True and MAX_THREADS != 1:
                 sys.stderr.write('Defined both a > 1 number of threads AND --single-thread. Pick one.\n\n')
                 sys.exit(1)
             args.remove(arg)
