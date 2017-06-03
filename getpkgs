@@ -1,0 +1,27 @@
+#!/bin/bash
+
+getpkgs()  {
+    if ( shopt nullglob | grep -q 'on$' );
+    then
+        HAD_NULLGLOB=1
+    else
+        HAS_NULLGLOB=0
+        shopt -s nullglob
+    fi
+    if [ ! -z "${1}" ];
+    then
+        PKG_FILES="$(echo *${1}*.pkg.tar.xz)"
+    else
+        PKG_FILES="$(echo *.pkg.tar.xz)"
+    fi
+
+    if [ ! -z "${PKG_FILES}" ];
+    then
+        printf "%s" "${PKG_FILES}"
+        return 0; 
+    else
+        return 1;
+    fi
+}
+
+getpkgs "$@"
