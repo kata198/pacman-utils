@@ -1,0 +1,476 @@
+#!/usr/bin/env python
+#
+# vim: set ts=4 sw=4 expandtab :
+
+# Copyright (c) 2017 Timothy Savannah - All Rights Reserved
+#   This code is licensed under the terms of the APACHE license version 2.0
+
+#
+#  pacman-mirrorlist-sort - Sorts the nirrors in /etc/pacman.d/mirrorlist
+#                             based on actual fetch times.
+#
+#  The first mirror is considered the "primary" mirror, and is where
+#    the file to test on is queried. If you get a lot of failures,
+#    try changing the mirror in the top location and retrying.
+#
+#  See --help for more info
+#
+
+
+import datetime
+import os
+import re
+import sys
+import tempfile
+import time
+import subprocess
+
+__version__ = '0.5.0'
+
+__version_tuple__ = (0, 5, 0)
+
+# Max time to make a connection
+MAX_CONNECT_SECONDS = 5
+
+# Max time to spend downloading
+MAX_DOWNLOAD_SECONDS = 30
+
+# Number of downloads to average into a single result
+NUM_PER_URL = 2
+
+SORT_BY_PACKAGE = 'glibc'
+
+try:
+    import func_timoeut
+
+    FunctionTimedOut = func_timeout.FunctionTimedOut
+    func_timeout = func_timeout.func_timeout
+
+    def timeoutPipeWait(timeout, pipe):
+        '''
+            timeoutPipeWait - Waits for a pipe to complete with a timeout.
+
+            This impl uses func_timeout
+
+            @param tiemout <float> - Max runtime seconds
+            @param pipe <subprocess.Popen> - A pipe
+
+            @return - Returncode from pipe
+        '''
+        return func_timeout(timeout, pipe.wait)
+except ImportError:
+#    sys.stderr.write('Warning: func_timeout python module not found. Timeouts emulated.\n')
+    class FunctionTimedOut(BaseException):
+        '''
+            Fake exception
+        '''
+        pass
+
+    def func_timeout(timeout, func, args=None, kwargs=None):
+        '''
+            Fake func_timeout - which doesn't do timeouts
+        '''
+        if args:
+            if kwargs:
+                return func(*args, **kwargs)
+            return func(*args)
+        elif kwargs:
+            return func(**kwargs)
+
+        return func()
+
+    def timeoutPipeWait(timeout, pipe):
+        '''
+            timeoutPipeWait - Waits for a pipe to complete with a timeout.
+
+            This impl does not use func_timeout, but still should work the same
+              nonetheless.
+
+            @param tiemout <float> - Max runtime seconds
+            @param pipe <subprocess.Popen> - A pipe
+
+            @return - Returncode from pipe
+        '''
+        startTime = time.time()
+
+        now = time.time()
+        while now - startTime < timeout:
+            time.sleep(.003)
+            ret = pipe.poll()
+            if ret is not None:
+                return ret
+
+            now = time.time()
+
+        raise FunctionTimedOut('Action did not complete within %d seconds.' %( timeout, ))
+
+
+
+def printUsage():
+    global SORT_BY_PACKAGE
+
+    sys.stderr.write('''Usage: pacman-optimize-mirrorlist  (Options)
+     Will read in the pacman mirrorlist, and sort it based on best times,
+       commenting out any that failed 
+       (does not have the package version a select package (default ''' + SORT_BY_PACKAGE + '''
+       that the first repo in the list has )
+
+       NOTE: This means the top repo is important, and if you end up
+         with a lot of commented mirrors, try moving a different to the top.
+
+   Options:
+
+      --no-commented         -   Normally all repos are tried.
+                                   Passing this will ignore commented repos
+
+      --stdout               -   Output mirror to stdout
+
+      --sort-package=N       -   Use N as the "sample" package for timings.
+                                    Defaults to "''' + SORT_BY_PACKAGE + '''"
+
+      --download-timeout=N   -   Max time to spend downloading before "timing out" a mirror.
+                                    Defaults to ''' + str(MAX_DOWNLOAD_SECONDS) + ''' seconds.
+      --connect-timeout=N    -   Max time to try connecting to server.
+                                    Defaults to ''' + str(MAX_CONNECT_SECONDS) + ''' seconds.
+      --num-per-url=N        -   Average out this many download times per URL
+                                    Defaults to ''' + str(NUM_PER_URL) + '''.
+
+      --help                 -   Show this message and exit
+
+      --version              -   Show version and exit
+
+All output is normally on stderr (to support --stdout param, in which case
+  the sorted list is output to stdout),
+
+Running with no args will sort the file inline. The old file will
+  be backed up to /etc/pacman.d/mirrorlist.bak
+BUT BE CAREFUL: If a .bak already exists, it will be removed
+  prior to backup.
+
+''')
+
+
+def printVersion():
+    sys.stderr.write('pacman-mirrorlist-optimize version %s by Timothy Savannah\n' %(__version__, ))
+
+
+STRIP_COMMENT_RE = re.compile('^[ \t]*#[ \t]*')
+
+def stripComment(line):
+    global STRIP_COMMENT_RE
+
+    return STRIP_COMMENT_RE.sub('', line)
+
+global devnull
+devnull = None
+
+def getDevnull():
+    '''
+        getDevnull - Open /dev/null if not already open, and return it as a file
+
+        NOTE: This is a function so the API is usable outside (maybe sometime in the future,
+          can't import it without a module or py extension), but things like pylint also
+          we don't want to actally open a handle
+
+        @return <file> - /dev/null opened for writing
+    '''
+    global devnull
+    if devnull is None:
+        devnull = open('/dev/null', 'w')
+
+    return devnull
+
+def fetchUrl(url):
+    global MAX_DOWNLOAD_SECONDS
+
+    devnull = getDevnull()
+
+    ret = None
+
+    tmpOut = tempfile.NamedTemporaryFile(mode='w+b', delete=True)
+
+    pipe = subprocess.Popen(["/usr/bin/curl", '-k', '--connect-timeout', str(MAX_CONNECT_SECONDS)] + [url],  shell=False, stdout=tmpOut, stderr=devnull)
+    try:
+        ret = timeoutPipeWait(MAX_DOWNLOAD_SECONDS, pipe)
+    except FunctionTimedOut as fte:
+        ret = None
+
+
+    if ret is None:
+        tmpOut.close()
+        return None
+
+    tmpOut.seek(0)
+    contentsHead = tmpOut.read(8)
+    tmpOut.close()
+
+    # Check if XZ header is present, else bad read
+    if contentsHead[1:5] != b'7zXZ':
+        return None
+
+    return ret
+
+def getSelectPackageInfo():
+    global SORT_BY_PACKAGE
+
+    pipe = subprocess.Popen(['/usr/bin/pacman', '-Sl'], shell=False, stdout=subprocess.PIPE)
+
+    contents = pipe.stdout.read()
+
+    pipe.wait()
+
+    lines = contents.decode('utf-8').split('\n')
+
+    sortByPackageSpaces = ' %s ' %( SORT_BY_PACKAGE, )
+
+    foundLine = None
+    for line in lines:
+        if not line:
+            continue
+        if sortByPackageSpaces in line:
+            foundLine = line
+            break
+
+    if not foundLine:
+        raise ValueError('Failed to find %s in pacman -Sl!' %(SORT_BY_PACKAGE, ) )
+
+    lineRE = re.compile('^(?P<repo>[^ ]+) (?P<name>[^ ]+) (?P<version>[^ ]+)')
+
+    matchObj = lineRE.match(foundLine)
+    if not matchObj:
+        raise ValueError('Failed to match %s line:  "%s"' %(SORT_BY_PACKAGE, foundLine ))
+
+    return matchObj.groupdict()
+
+
+
+def tryUrl(url, packageRepo, packageName, packageVersion, repoArch='x86_64'):
+
+    doUrl = url.replace('$repo', packageRepo).replace('$arch', repoArch)
+
+    while doUrl[-1] == '/':
+        doUrl = doUrl[:-1]
+
+    doUrl += '/%s-%s-%s.pkg.tar.xz' %(packageName, packageVersion, repoArch)
+    sys.stderr.write ( "Trying url: %s\n" %(doUrl, ))
+
+    startTime = time.time()
+    result = fetchUrl(doUrl)
+    endTime = time.time()
+
+    if result is None or result != 0:
+        sys.stderr.write ( "FAILED!\n")
+        return None
+
+    sys.stderr.write ( "Url took: %.3f seconds.\n" %( endTime - startTime, ))
+    return endTime - startTime
+
+if __name__ == '__main__':
+
+    args = sys.argv[1:]
+
+    getDevnull() # Already local in scope, don't reassign
+
+    if '--help' in args:
+        printUsage();
+        sys.exit(0)
+
+    if '--version' in args:
+        printVersion()
+        sys.exit(0)
+
+    if os.getuid() != 0:
+        sys.stderr.write('\nRerun as root!\n\n')
+        sys.exit(1)
+
+    supportComments = True
+    isStdout = False
+
+    for arg in args[:]:
+        if arg == '--no-commented':
+            supportComments = False
+            args.remove(arg)
+        elif arg == '--stdout':
+            isStdout = True
+            args.remove(arg)
+        elif arg.startswith('--sort-package'):
+
+            matchObj = re.match('^--sort-package=(?P<value>.+)$', arg)
+            if not matchObj:
+                sys.stderr.write('--sort-package needs to be in form --sort-package=N  e.x.  --sort=package=binutils\n\n')
+                sys.exit(1)
+
+            SORT_BY_PACKAGE = matchObj.groupdict()['value']
+            args.remove(arg)
+        elif arg.startswith('--download-timeout'):
+
+            matchObj = re.match('^--download-timeout=(?P<value>.+)$', arg)
+            if not matchObj:
+                sys.stderr.write('--download-timeout needs to be in the form --download-timeout=N  e.x.  --download-timeout=30\n\n')
+                sys.exit(1)
+
+            MAX_DOWNLOAD_SECONDS = matchObj.groupdict()['value']
+
+            try:
+                MAX_DOWNLOAD_SECONDS = int(MAX_DOWNLOAD_SECONDS)
+            except:
+                sys.stderr.write('Download Timeout must be an integer of number of seconds!  Got: %d\n' %(MAX_DOWNLOAD_SECONDS, ))
+                sys.exit(1)
+
+            args.remove(arg)
+        elif arg.startswith('--connect-timeout'):
+
+            matchObj = re.match('^--connect-timeout=(?P<value>.+)$', arg)
+            if not matchObj:
+                sys.stderr.write('--connect-timeout needs to be in the form --connect-timeout=N  e.x.  --connect-timeout=30\n\n')
+                sys.exit(1)
+
+            MAX_CONNECT_SECONDS = matchObj.groupdict()['value']
+            try:
+                MAX_CONNECT_SECONDS = int(MAX_CONNECT_SECONDS)
+            except:
+                sys.stderr.write('Connect Timeout must be an integer of number of seconds!  Got: %d\n' %(MAX_CONNECT_SECONDS, ))
+                sys.exit(1)
+
+            args.remove(arg)
+        elif arg.startswith('--num-per-url'):
+
+            matchObj = re.match('^--num-per-url=(?P<value>.+)$', arg)
+            if not matchObj:
+                sys.stderr.write('--num-per-url needs to be in the form --num-per-url=N  e.x.  --num-per-url=1\n\n')
+                sys.exit(1)
+
+            NUM_PER_URL= matchObj.groupdict()['value']
+            try:
+                NUM_PER_URL = int(NUM_PER_URL)
+            except:
+                sys.stderr.write('Num per url must be an integer!  Got: %d\n' %(NUM_PER_URL, ))
+                sys.exit(1)
+
+            args.remove(arg)
+
+    if args:
+        sys.stderr.write('Unknown arguments:  %s\n\n' %(repr(args), ))
+        sys.exit(1)
+
+
+    try:
+        with open('/etc/pacman.d/mirrorlist', 'rt') as f:
+            contents = f.read()
+    except Exception as e:
+        sys.stderr.write('Error reading mirrorlist. %s:  %s' %(e.__class__.__name__, str(e)))
+        sys.exit(1)
+
+    lines = contents.split('\n')
+
+    SERVER_RE = re.compile('^[ \t]*[sS]erver[ \t]*=[ \t]*(?P<repo_url>[^ \t#]+)[ \t]*([#].*){0,1}$')
+
+    serverList = []
+
+    for line in lines:
+        if supportComments is True:
+            line = stripComment(line)
+
+        line = line.strip()
+
+        if not line:
+            continue
+
+        matchObj = SERVER_RE.match(line)
+        if not matchObj:
+            continue
+
+        origRepoUrl = repoUrl = matchObj.groupdict()['repo_url']
+
+        if repoUrl.count('$repo') != 1:
+            sys.stderr.write('No/Multiple $repo in:  "%s". SKIPPING\n' %(origRepoUrl, ))
+            continue
+
+#        repoUrl = repoUrl.replace('$repo', '%s')
+
+        if repoUrl.count('$arch') != 1:
+            sys.stderr.write('No/Multiple $arch in:  "%s". SKIPPING\n' %(origRepoUrl, ))
+            continue
+
+#        repoUrl = repoUrl.replace('$arch', '%s')
+
+        sys.stderr.write('Found usable url:  "%s"\n' %(origRepoUrl, ))
+        serverList.append(repoUrl)
+
+    ret = subprocess.Popen(['/usr/bin/pacman', '-Sy'], shell=False, stdout=devnull).wait()
+    if ret != 0:
+        sys.stderr.write('\nCould not update mirrorlist! Try swapping your top mirror, or make sure you are root.\n\n')
+        sys.exit(1)
+
+    selectPackageInfo = getSelectPackageInfo()
+
+    serverListWithTimes = []
+    failedServerList = []
+    for serverUrl in serverList:
+
+        totalTime = 0
+
+        failed = False
+        for num in range(NUM_PER_URL):
+
+            resultTime = tryUrl(serverUrl, selectPackageInfo['repo'], selectPackageInfo['name'], selectPackageInfo['version'])
+
+            if resultTime is None:
+                failed = True
+                break
+
+            totalTime += resultTime
+
+        if failed is True:
+            failedServerList.append( serverUrl )
+            continue
+
+        avgTime = totalTime / float(NUM_PER_URL)
+
+        sys.stderr.write("Average time for '%s' is %.3f\n" %(serverUrl, avgTime, ))
+
+        serverListWithTimes.append( (serverUrl, avgTime) )
+
+    serverListWithTimes.sort( key = lambda x : x[1] )
+
+
+    if not serverListWithTimes:
+        sys.stderr.write('No repos worked. Check internet connection?\n')
+        sys.exit(1)
+
+    fastestSpeed = min ( [ x[1] for x in serverListWithTimes ] )
+
+    speedRatios = [ (fastestSpeed / float(x[1])) * 100.0 for x in serverListWithTimes ]
+
+
+    def writeData(f):
+        f.write('#  pacman.d mirrorlist sorted on:  %s\n\n' %(datetime.datetime.now().ctime(), ))
+
+        i = 0
+        for serverUrl, timing in serverListWithTimes:
+
+            speedRatio = speedRatios[i]
+            f.write('Server = %s  #  Ratio = %.3f\n' %(serverUrl, speedRatio))
+
+            i += 1
+
+        if failedServerList:
+            f.write('\n\n### FAILED SERVERS ##\n\n')
+            f.write('\n'.join( [ '# Server = %s' %(failedServer, ) for failedServer in failedServerList ] ))
+        f.write('\n\n')
+
+
+    if not isStdout:
+        if os.path.exists('/etc/pacman.d/mirrorlist.bak'):
+            os.remove('/etc/pacman.d/mirrorlist.bak')
+
+        os.rename('/etc/pacman.d/mirrorlist', '/etc/pacman.d/mirrorlist.bak')
+        sys.stderr.write ( "Moved /etc/pacman.d/mirrorlist to /etc/pacman.d/mirrorlist.bak\n" )
+
+        with open('/etc/pacman.d/mirrorlist', 'wt') as f:
+            writeData(f)
+    else:
+        writeData(sys.stdout)
+
+
+# vim: set ts=4 sw=4 expandtab
