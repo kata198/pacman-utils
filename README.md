@@ -164,7 +164,7 @@ Where "${PKG\_NAME}" is the name of the package (e.x. unzip, redis)
 
 	or
 
-	pacman -U `getpkgs`
+	pacman -U \`getpkgs\`
 
 7. Run the packages, restart the daemon, etc (see makepkg.conf for full info on daemon/root procedure)
 
