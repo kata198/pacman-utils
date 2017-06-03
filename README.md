@@ -5,11 +5,34 @@ Some utils and helper scripts for archlinux packages
 How to install
 ==============
 
-As root, run ./install.sh followed by ./install\_data.sh . Please use the install\_data.sh instead of running your own!
+**Install Programs:**
+
+As root, run ./install.sh 
+
+Can also be installed elsewhere or in a pkgdir like:   ./install.sh DESTDIR=$pkgdir
+
+
+**Install Data (needed for whatprovides\_upstream):**
+
+Run ./install\_data.sh as root.
+
+
+**Install Extras**
+
+Run ./install\_extras.sh as root. This will install my makepkg.conf with additional functions for CFLAGS toggling (native, lto, etc.) and profile-guided optimization made easy.
+
+See below for more info
 
 
 
-I will update the *data*/providesDB often (for whatprovides\_upstream). Only generate your own if you absolutely need to, like if you are freezing a version of archlinux for offline forking for an internal OS.
+ProvidesDB Data
+---------------
+
+whatprovides\_upstream uses an external database, found here in *data*/providesDB.
+
+I will update the *data*/providesDB often (for whatprovides\_upstream).
+
+Only generate your own if you absolutely need to, like if you are freezing a version of archlinux for offline forking for an internal OS.
 
 whatprovides
 ------------
@@ -113,4 +136,53 @@ Profile Guided Optimization
 ===========================
 
 Profile guided optimization is easily supported and incorporated with archlinux and these tools.
+
+These instructions are in full in my makepkg.conf, use ./install\_extras.sh to inherit support for these steps:
+
+1. Create /usr/src/arch if not already created and owned by your user:
+
+	mkdir -p /usr/src/arch; chgrp users /usr/src/arch; chmod 775 /usr/src/arch;
+
+2. cd to /usr/src/arch as your user, and download the package build info for what you want to build:
+
+	cd /usr/src/arch
+	archsrc-getpkg ${PKG_NAME}
+
+Where "${PKG\_NAME}" is the name of the package (e.x. unzip, redis)
+
+3. cd into that package directory, and edit PKGBUILD
+
+4. In the build() function, add before the "configure" line:
+
+	set_cflags_do_profile
+
+5. Run makepkg
+
+6. Install package
+
+	installpackage
+
+	or
+
+	pacman -U `getpkgs`
+
+7. Run the packages, restart the daemon, etc (see makepkg.conf for full info on daemon/root procedure)
+
+"make check" and benchmark utils are good for this too. Also include your intended usage patterns
+
+8. Go into "src/WHATEVER" where WHATEVER Is the source dir  (like unzip-6.3.1)
+
+9. Run "mkgcdatar"
+
+10. cd ../../
+
+11. Remove the "src" directory
+
+12. Run "makepkg -f" again, this time it will use the gcda information which profiled your runs, and build a profiled package
+
+13. Install packages in that directory ( like with "installpackage" script )
+
+
+Now you are up to 50% faster with profiled-guided optimizations! And it's really simple!
+
 
