@@ -47,14 +47,21 @@ _init_abs2() {
 get_repo_for_package() {
     PKG_NAME="${1}"
 
-    SEARCH_RESULT="$(pacman -Ss "${PKG_NAME}" | grep -E "^[^/][^/]*/${PKG_NAME} ")"
-    if [ $? -ne 0 ];
+    SEARCH_RESULT="$(pacman -Sl | grep " ${PKG_NAME} ")"
+    if [ $? -ne 0 ] || [ -z "${SEARCH_RESULT}" ];
     then
-        echo "Cannot find repo for package: ${PKG_NAME}" >&2
-        return 1;
+        printf "Cannot find package: \"%s\"\n" "${PKG_NAME}"
+        return 1
     fi
-    
-    echo "$(echo "${SEARCH_RESULT}" | sed -e 's|/.*||g')"
+
+    REPO="$(echo "${SEARCH_RESULT}" | sed -e 's/ .*//g')"
+    if [ -z "${REPO}" ];
+    then
+        printf "Cannot determine repo for package: \"%s\"\n" "${PKG_NAME}"
+        return 1
+    fi
+
+    echo "${REPO}"
     return 0;
 }
 
@@ -89,7 +96,7 @@ do_package() {
 
     for repo in "${REPOS[@]}";
     do
-        if [ "$repo" = "core" -o "${repo}" = "extra" -o "${repo}" ];
+        if [ "$repo" = "core" -o "${repo}" = "extra" ];
         then
             DIR="packages"
         elif [ "$repo" = "community" -o "$repo" = "multilib" ];
