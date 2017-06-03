@@ -1,0 +1,13 @@
+0.5.1 - Jun 3 2017
+- Fix abs2 issue with community/multilib repos
+- Fix comment-stripping in extractMtree.py
+- Some minor refactoring in extractMtree.py
+- Update data again ( Will not be noted henceforth in Changelogs)
+
+Also, note that PKGBUILDs are available for pacman-utils and the data.
+
+See: https://github.com/kata198/pacman-utils-pkg
+See: https://github.com/kata198/pacman-utils-data-pkg
+
+0.5.0 - Jun 3 2017
+- Initial Public Release
