@@ -1,2 +1,16 @@
 
-To install, run install.sh as root.
+To install programs:
+
+    ./install.sh  # as root, install to /usr/bin
+
+    ./install.sh DESTDIR=$pkgdir  # Install to "$pkgdir"/usr/bin
+
+    ./install.sh PREFIX=$HOME     # Install to $HOME/bin
+
+To install data:
+
+    ./install_data.sh # as root
+
+To insall extras:
+
+    ./install_extras.sh # as root
