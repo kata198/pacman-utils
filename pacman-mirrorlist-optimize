@@ -427,7 +427,7 @@ if __name__ == '__main__':
 
         avgTime = totalTime / float(NUM_PER_URL)
 
-        sys.stderr.write("Average time for '%s' is %.3f\n" %(serverUrl, avgTime, ))
+        sys.stderr.write("\nAverage time for '%s' is %.3f\n\n" %(serverUrl, avgTime, ))
 
         serverListWithTimes.append( (serverUrl, avgTime) )
 
