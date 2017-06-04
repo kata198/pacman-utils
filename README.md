@@ -97,12 +97,12 @@ I update this version often.
 Supports glob expressions, i.e. '\*/libc.so\*' . If in glob mode, will print the providing package followed by a tab and the provided file.
 
 
-pacman-sort-mirrorlist
-----------------------
+pacman-mirrorlist-optimize
+--------------------------
 
 This utility sorts the /etc/pacman.d/mirrorlist based on real results from real downloads to each url (as oppose to other tools which just use ping time. LATENCY != THROUGHPUT!)
 
-See --help for details. With no arguments, will sort the mirrorlist.
+See --help for details. With no arguments, will sort inline the mirrorlist based on all mirrors in /etc/pacman.d/mirrorlist (including commented mirrors).
 
 
 installpackage
