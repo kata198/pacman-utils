@@ -10,7 +10,7 @@ Via Package/pacman
 
 You can get all but "extras" through standard archlinux packages.
 
-These are not yet in any primary repo, but you can download prebuilt pacvkages under "releases", or download/checkout the source tarballs from:
+These are currently only in the AUR repo, but you can download prebuilt pacvkages under "releases", or download/checkout the source tarballs from:
 
 Core Package (programs):  https://github.com/kata198/pacman-utils-pkg
 
@@ -188,6 +188,13 @@ This is meant to be run after compiling with "-fprofile-generate" in the sources
 
 It is designed to be used in conjunction with "set\_cflags\_do\_profile" function (see Profiled Guided Optimization below)
 
+
+extractMtree.py
+---------------
+
+Builds the providesDB used by whatprovides\_upstream. There are very few circumstances (like against a local repo you host) that you actually need to run this.
+
+Generally, you want to just use the data/providesDB that ships with pacman-utils, and is available via install\_data.sh or the pacman-utils-data package.
 
 
 Profile Guided Optimization
