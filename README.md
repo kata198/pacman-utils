@@ -169,7 +169,25 @@ Optionally backs up the old directory. Will not remove data without user input.
 getpkgs
 -------
 
-List packages in current directory
+List packages in current directory (no argumentS), or all packages within a specific directory (but not subdirectories), or unrolls a quoted glob and prints files which are packages, or if glob includes directory, prints packages within that directory.
+
+Examples:
+
+	pacman -U `getpkgs`  # Install all packages in current directory
+
+
+mkgcdatar
+---------
+
+Takes all gcda files found past current directory, and creates "gcda.tar".
+
+Also creates hardlinks one directory and two directories up.
+
+
+This is meant to be run after compiling with "-fprofile-generate" in the sources/${pkgname}-${pkgversion} directory.
+
+It is designed to be used in conjunction with "set\_cflags\_do\_profile" function (see Profiled Guided Optimization below)
+
 
 
 Profile Guided Optimization
