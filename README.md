@@ -166,6 +166,12 @@ Gets the latest version of an archlinux package build files, and checks them out
 Optionally backs up the old directory. Will not remove data without user input.
 
 
+getpkgs
+-------
+
+List packages in current directory
+
+
 Profile Guided Optimization
 ===========================
 

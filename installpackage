@@ -34,10 +34,10 @@ then
 	pacman -U *.pkg.tar.xz;
 elif [ $# -eq 1 ];
 then
-	pacman -U "*$1*.pkg.tar.xz";
+	pacman -U *$1*.pkg.tar.xz;
 elif [ $# -eq 2 ] && [ "$1" == "-d" ];
 then
-	pacman -U "$1/*.pkg.tar.xz";
+	pacman -U "$2"/*.pkg.tar.xz;
 else
 	print_help;
 	exit 1;
