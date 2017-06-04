@@ -1,3 +1,7 @@
+0.5.2 - Jun 4 2017
+- Add missing files to README
+- Fix off-by-one (one too many) # of packages reported by extractMtree.py
+
 0.5.1 - Jun 3 2017
 - Fix abs2 issue with community/multilib repos
 - Fix comment-stripping in extractMtree.py
