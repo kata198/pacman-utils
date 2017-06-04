@@ -909,7 +909,7 @@ if __name__ == '__main__':
 
         try:
             oldResults = json.loads(priorDBContents)
-            sys.stdout.write('Read %d records from old database. Trimming non-updates...\n' %(len(oldResults), ))
+            sys.stdout.write('Read %d records from old database. Trimming non-updates...\n' %(len(oldResults) - 1, ))
 
             if '__vers' in oldResults:
                 oldVersion = oldResults.pop('__vers')
@@ -1203,7 +1203,7 @@ if __name__ == '__main__':
 
         pass
         #import pdb; pdb.set_trace()
-        print ( "\n\nSuccess.\nDatabase size: %d\n" %(len(results), ))
+        print ( "\n\nSuccess.\nDatabase size: %d\n" %(len(results) - 1, ))
 #        print ( str(locals().keys()) )
         pass
         pass
