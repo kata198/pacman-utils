@@ -24,7 +24,7 @@ SUPPORTED_DB_VERSION = '0.2'
 
 def globToRE(globStr):
 
-    pattern = globStr.replace('.', '[\\.]').replace('*', '.*') + '$'
+    pattern = globStr.replace('.', '[\\.]').replace('*', '.*').replace('?', '.') + '$'
 
     return re.compile(pattern)
 
@@ -77,7 +77,7 @@ if __name__ == '__main__':
 
     providedBy = []
 
-    if '*' in queryVal:
+    if '*' in queryVal or '?' in queryVal:
         # If did not start with an absolute path or a wildcard, add a wildcard to the front
         #  (otherwise will never match anything)
         if not queryVal.startswith( ('/', '*') ):

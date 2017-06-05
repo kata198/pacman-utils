@@ -194,16 +194,16 @@ then
     fi
 fi
 
-if ( echo "${QUERY_ARG}" | grep -q '\*' );
+if ( echo "${QUERY_ARG}" | grep -q '[*?]' );
 then
     HAS_WILDCARD="true"
-    if ( ! echo "${QUERY_AG}" | grep -q '^[/\*]' );
+    if ( ! echo "${QUERY_ARG}" | grep -q '^[/\*]' );
     then
         # If no star or slash at start, add star for them.
         #  (otherwise, will never match)
         QUERY_ARG='*'"${QUERY_ARG}"
     fi
-    SEARCH="$(printf "%s\n" "${QUERY_ARG}" | sed -e "s|\.|[\\\\.]|g" -e 's|*|.*|g')"
+    SEARCH="$(printf "%s\n" "${QUERY_ARG}" | sed -e "s|\.|[\\\\.]|g" -e 's|*|.*|g' -e 's|[?]|.|g')"
 else
     HAS_WILDCARD="false"
     if  [[ ! -e "${QUERY_ARG}" ]] && ! (  echo "${QUERY_ARG}" | grep -q "/" );
