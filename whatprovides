@@ -233,10 +233,10 @@ fi
 
 if [ "${HAS_WILDCARD}" = "false" ];
 then
-    ${DB_QUERY} | grep " ${SEARCH}"'$' | sed 's/ .*//g'
+    ${DB_QUERY} | grep " ${SEARCH}"'$' | sed 's/ .*//g' | sort
     [ $? -ne 0 ] && exit 1;
 else
-    ${DB_QUERY} | grep -E " ${SEARCH}"'$' | sed "s| |\t|"
+    ${DB_QUERY} | grep -E " ${SEARCH}"'$' | sed "s| |\t|" | sort
     [ $? -ne 0 ] && exit 1;
 fi
 

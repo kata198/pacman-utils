@@ -90,13 +90,18 @@ if __name__ == '__main__':
                 if queryRE.match(pkgProvide):
                     providedBy.append( (pkg, pkgProvide) )
 
-        print ( '\n'.join( ["%s\t%s" %(pkgName, pkgProvide) for pkgName, pkgProvide in providedBy ]) )
+        toPrint = ["%s\t%s" %(pkgName, pkgProvide) for pkgName, pkgProvide in providedBy ]
+        toPrint.sort()
+
+        print ( '\n'.join( toPrint ) )
 
     else:
 
         for pkg, pkgProvides in providesMap.items():
             if queryVal in pkgProvides['files']:
                 providedBy.append(pkg)
+
+        providedBy.sort()
 
         print ( '\n'.join(providedBy) )
 
