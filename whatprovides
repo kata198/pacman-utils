@@ -98,6 +98,17 @@ get_mtime() {
     return $?
 }
 
+#######
+## check_db_needs_regen - Check if we need to regen. 
+##
+##    Args:
+##
+##             arg1 - database name
+##
+##    Return:
+##             0 - database DOES need regen
+##             1 - database does NOT need regen
+##          
 check_db_needs_regen() {
     TRY_DB="${1}"
     [[ ! -e "${TRY_DB}" ]] && return 0;
@@ -108,29 +119,48 @@ check_db_needs_regen() {
 
 check_can_use_dbfile() {
     TRY_DB="${1}"
+
+    if [[ ! -e "${TRY_DB}" ]];
+    then
+        TMP_FILE="$(mktemp /tmp/.doXXXXXXXX)"
+        # Create with an old time (Just do +1 year on epoch, so don't have to worry about timezone going
+        #  BACK TO THE FUTURE!!!
+        printf "#!/bin/bash\ntouch -d 'Jan 1 1971 00:00:00' '%s' 2>/dev/null && rm -f '%s' 2>/dev/null\nexit \$?\n'" "${TRY_DB}" "${TRY_DB}" > "${TMP_FILE}"
+        chmod +x "${TMP_FILE}"
+        flock "${TRY_DB}" -c "${TMP_FILE}" >/dev/null 2>/dev/null
+        rm -f "${TMP_FILE}"
+
+        if [ -e "${TRY_DB}" -a -w "${TRY_DB}" ];
+        then
+            # The database exists and we can write to it, so it's usable.
+            return 0;
+        else
+            # Does not already exist and failed to create
+            return 1;
+        fi
+    fi
+    
+    # At this point DB does exist.
+    
     if [[ -w "${TRY_DB}" ]];
     then
-        # Can write, return true
+        # If we can write, we are good to go and use it
         return 0;
-    elif [[ -e "${TRY_DB}" ]] && [[ -r "${TRY_DB}" ]];
+    elif [[ -r "${TRY_DB}" ]];
     then
-        # Can't write but exists... see if needs update, else we can use.
+        # Otherwise, if we can read it, check if it needs update.
+        #  If it does, since we can't update (no write), can't use it.
+        
         if ( check_db_needs_regen "${TRY_DB}" );
         then
-            return 0;
+            return 1;
         fi
         # We need to update, so fallback.
+        return 0;
+    else
+        # Can't read, can't write, can't do diddly-squat!
         return 1;
-   else
-       # Hmm.. this isn't good.
-       TMP_FILE="$(mktemp /tmp/.doXXXXXXXX)"
-       printf "#!/bin/bash\ntouch '%s' 2>/dev/null && rm -f '%s' 2>/dev/null\nexit \$?\n'" "${TRY_DB}" "${TRY_DB}" > "${TMP_FILE}"
-       chmod +x "${TMP_FILE}"
-       flock "${TRY_DB}" -c "${TMP_FILE}" >/dev/null 2>/dev/null
-       RET=$?
-       rm -f "${TMP_FILE}"
-       return ${RET}
-   fi
+    fi
 }
 
 # PHEW! That was a LOT of argument parsing! Onto the good stuff...
