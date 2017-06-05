@@ -1,4 +1,5 @@
 #!/bin/bash
+# vim: set ts=4 sw=4 st=4 expandtab :
 
 # Copyright (c) 2017 Timothy Savannah - All Rights Reserved
 #   This code is licensed under the terms of the APACHE license version 2.0
@@ -9,10 +10,10 @@
 #
 
 print_help() {
-	echo "Usage:";
-	echo -e "\tinstallpackage - no args installs all packages in current directory.";
-	echo -e "\tinstallpackage [glob] - Installs all packages in current directory containing glob pattern (or subdirectory if glob contains '/')";
-	echo -e "\tinstallpackage -d [directory] - Installs all packages in specified directory";
+    echo "Usage:";
+    echo -e "\tinstallpackage - no args installs all packages in current directory.";
+    echo -e "\tinstallpackage [glob] - Installs all packages in current directory containing glob pattern (or subdirectory if glob contains '/')";
+    echo -e "\tinstallpackage -d [directory] - Installs all packages in specified directory";
 }
 
 if [ $# -gt 0 ] && [ "$1" == "--help" -o "$1" = "-h" -o "$1" = "-?" ];
@@ -23,22 +24,24 @@ fi
 
 if [ "`whoami`" != "root" ];
 then
-	echo "Login as root: "
+    echo "Login as root: "
 
-	su root -c "$0 $@";
-	exit $?;
+    su root -c "$0 $@";
+    exit $?;
 fi
 
 if [ $# -eq 0 ];
 then
-	pacman -U *.pkg.tar.xz;
+    pacman -U *.pkg.tar.xz;
 elif [ $# -eq 1 ];
 then
-	pacman -U *$1*.pkg.tar.xz;
+    pacman -U *$1*.pkg.tar.xz;
 elif [ $# -eq 2 ] && [ "$1" == "-d" ];
 then
-	pacman -U "$2"/*.pkg.tar.xz;
+    pacman -U "$2"/*.pkg.tar.xz;
 else
-	print_help;
-	exit 1;
+    print_help;
+    exit 1;
 fi
+
+# vim: set ts=4 sw=4 st=4 expandtab :

@@ -14,14 +14,14 @@
 #  Returns 0 if at least one provider is found
 
 echoerr() {
-	echo "$@" >&2
+    echo "$@" >&2
 }
 
 usageSummary() {
-	echoerr "Usage: whatprovides (Options) [file]"
-	echoerr "  Prints the package which provides the given file on the current system,"
-	echoerr "   otherwise returns non-zero."
-	echoerr;
+    echoerr "Usage: whatprovides (Options) [file]"
+    echoerr "  Prints the package which provides the given file on the current system,"
+    echoerr "   otherwise returns non-zero."
+    echoerr;
     echoerr " Use '*' as a wildcard. Example: '*/libz.so*'"
     echoerr "  When in wildcard mode, both the package name will be printed, followed"
     echoerr "   by a tab, and then the matched file."
@@ -191,7 +191,7 @@ fi
 
 if [[ -d "${SEARCH}" ]] && ( ! echo "${SEARCH}" | grep -qE '/$' );
 then
-	SEARCH="${SEARCH}/"
+    SEARCH="${SEARCH}/"
 fi
 
 if [[ "${USE_CACHED}" = "false" ]];
