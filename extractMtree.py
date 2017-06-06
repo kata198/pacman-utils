@@ -888,6 +888,15 @@ if __name__ == '__main__':
     ##############################################
     ######## READ PACKAGE LIST AND OLD DB
     ########################################
+
+    if not convertOnly:
+        if os.getuid() != 0:
+            sys.stderr.write('WARNING: Cannot refresh pacman database.\n')
+        else:
+            ret = subprocess.Popen(['/usr/bin/pacman', '-Sy'], shell=False).wait()
+            if ret != 0:
+                sys.stderr.write('WARNING: pacman -Sy returned non-zero: %d\n' %(ret,))
+
 #    allPackages = [ ('core', 'binutils', '2.28.0-2') ]
     allPackages = getAllPackages()
 
@@ -1005,13 +1014,6 @@ if __name__ == '__main__':
 
         if result == 'n':
             sys.exit(2)
-
-    if os.getuid() != 0:
-        sys.stderr.write('WARNING: Cannot refresh pacman database.\n')
-    else:
-        ret = subprocess.Popen(['/usr/bin/pacman', '-Sy'], shell=False).wait()
-        if ret != 0:
-            sys.stderr.write('WARNING: pacman -Sy returned non-zero: %d\n' %(ret,))
 
 
     if 'REPO_URLS' in locals():
