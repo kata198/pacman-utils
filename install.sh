@@ -6,39 +6,43 @@
 BIN_FILES="installpackage archsrc-buildpkg whatprovides whatprovides_upstream mkgcdatar getpkgs abs2 archsrc-getpkg pacman-mirrorlist-optimize"
 SBIN_FILES="extractMtree.py"
 
-for arg in "$@";
-do
-    if ( echo "${arg}" | grep -q '^PREFIX=' );
-    then
-        export "${arg}"
-    elif ( echo "${arg}" | grep -q '^DESTDIR=' );
-    then
-        export "${arg}"
-    fi
-done
+process_installdir_args() {
 
-if [ -z "${PREFIX}" ];
-then
-    PREFIX="usr"
-else
-    if [ "${PREFIX}" != "/" ];
+    for arg in "$@";
+    do
+        if ( echo "${arg}" | grep -q '^PREFIX=' );
+        then
+            export "${arg}"
+        elif ( echo "${arg}" | grep -q '^DESTDIR=' );
+        then
+            export "${arg}"
+        fi
+    done
+
+    if [ -z "${PREFIX}" ];
     then
-        PREFIX="$(echo "${PREFIX}" | sed 's|[/][/]*$||g')"
-        PREFIX="$(echo "${PREFIX}" | sed 's|//|/|g')"
-    fi
-fi
-if [ -z "${DESTDIR}" ];
-then
-    DESTDIR=""
-else
-    if [ "${DESTDIR}" != "/" ];
-    then
-        DESTDIR="$(echo "${DESTDIR}" | sed 's|[/][/]*$||g')"
-        DESTDIR="$(echo "${DESTDIR}" | sed 's|//|/|g')"
+        PREFIX="usr"
     else
-        DESTDIR=''
+        if [ "${PREFIX}" != "/" ];
+        then
+            PREFIX="$(echo "${PREFIX}" | sed 's|[/][/]*$||g')"
+            PREFIX="$(echo "${PREFIX}" | sed 's|//|/|g')"
+        fi
     fi
-fi
+    if [ -z "${DESTDIR}" ];
+    then
+        DESTDIR=""
+    else
+        if [ "${DESTDIR}" != "/" ];
+        then
+            DESTDIR="$(echo "${DESTDIR}" | sed 's|[/][/]*$||g')"
+            DESTDIR="$(echo "${DESTDIR}" | sed 's|//|/|g')"
+        else
+            DESTDIR=''
+        fi
+    fi
+
+}
 
 ########################
 ## failed_install - 
@@ -74,6 +78,13 @@ failed_install() {
 
     exit ${_FI_EXIT_CODE}
 }
+
+
+#####################
+## MAIN
+#########
+
+process_installdir_args;
 
 BINDIR="${DESTDIR}/${PREFIX}/bin"
 BINDIR="$(echo "${BINDIR}" | sed 's|//|/|g')"
