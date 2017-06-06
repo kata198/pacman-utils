@@ -3,7 +3,8 @@
 # Installs all the pacman-utils
 #  use ./install.sh PREFIX=$HOME to install to local home dir.
 
-ALL_FILES="installpackage archsrc-buildpkg whatprovides whatprovides_upstream extractMtree.py mkgcdatar getpkgs abs2 archsrc-getpkg pacman-mirrorlist-optimize"
+BIN_FILES="installpackage archsrc-buildpkg whatprovides whatprovides_upstream mkgcdatar getpkgs abs2 archsrc-getpkg pacman-mirrorlist-optimize"
+SBIN_FILES="extractMtree.py"
 
 for arg in "$@";
 do
@@ -39,27 +40,59 @@ else
     fi
 fi
 
+########################
+## failed_install - 
+##          Output that install was a failure, and exit with provided code
+##
+##      Args:
+##
+##          Arg1 (optional)  <int>  - Exit Code
+##
+##                                    If not provided, default: 1
+##
+##          Arg2 (optional)  <str>  - Optional step name  (e.x. "mkdir" )
+##                                      Used for the error message output to user.
+##
+##                                    If not provided - "Install" will be used
+##
+##     Notes:
+##
+##         * WILL TERMINATE PROGRAM
+##         * This function's documentation is 3x the length of its body!
+##
+##
+failed_install() {
+    _FI_EXIT_CODE="$1"
+    _FI_OPT_NAME="$2"
+
+    [ -z "${_FI_EXIT_CODE}" ] && _FI_EXIT_CODE=1
+
+    [ -z "${_FI_OPT_NAME}" ] && _FI_OPT_NAME="Install"
+
+    printf "\n\n" >&2
+    printf "ERR: Install returned non-zero [ %d ]. Check above for errors.\n\n" "${RET}"
+
+    exit ${_FI_EXIT_CODE}
+}
+
 BINDIR="${DESTDIR}/${PREFIX}/bin"
 BINDIR="$(echo "${BINDIR}" | sed 's|//|/|g')"
 
-mkdir -p "${BINDIR}"
+SBINDIR="${DESTDIR}/${PREFIX}/sbin"
+SBINDIR="$(echo "${SBINDIR}" | sed 's|//|/|g')"
 
-install -v -m 755 ${ALL_FILES} "${BINDIR}"
-RET=$?
-if [ $RET -ne 0 ];
-then
-    echo;
-    echo;
-    echo "WARNING: Install returned non-zero. Check for errors above"'!';
-    exit ${RET}
-fi
+mkdir -p "${BINDIR}"
+mkdir -p "${SBINDIR}"
+
+install -v -m 755 ${BIN_FILES} "${BINDIR}" || failed_install 1 "Install programs to '${BINDIR}'"
+install -v -m 755 ${SBIN_FILES} "${SBINDIR}" || failed_install 1 "Install superuser programs to '${SBINDIR}'"
 
 cd "${BINDIR}"
 rm -f archsrc-buildpkg.sh buildpkg.sh
 
 # buildpkg.sh
-echo "Creating link from ${BINDIR}/archsrc-buildpkg -> ${BINDIR}/buildpkg.sh  (new name -> old name)"
-ln -sf archsrc-buildpkg buildpkg.sh # Right now, just symlink these two names
+# echo "Creating link from ${BINDIR}/archsrc-buildpkg -> ${BINDIR}/buildpkg.sh  (new name -> old name)"
+# ln -sf archsrc-buildpkg buildpkg.sh # Right now, just symlink these two names
 
 
 #install -v -m 644 "data/providesDB" "${DESTDIR}/var/lib/pacman/.providesDB"
