@@ -7,3 +7,4 @@ __pycache__/
 *.diff
 *.pkg.tar.xz
 output*
+pacman-utils-data/

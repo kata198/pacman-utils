@@ -43,7 +43,25 @@ VARDIR="$(echo "${VARDIR}" | sed 's|//|/|g')"
 
 mkdir -p "${VARDIR}"
 
-install -v -m 644 "data/providesDB" "${VARDIR}/.providesDB"
+if [ ! -d "pacman-utils-data" ];
+then
+    git clone https://github.com/kata198/pacman-utils-data
+    if [ $? -ne 0 ];
+    then
+        echo "Failed to clone: https://github.com/kata198/pacman-utils-data" >&2
+        exit 1
+    fi
+else
+    cd pacman-utils-data
+    git pull;
+    if [ $? -ne 0 ];
+    then
+        echo "Warning: failed to update pacman-utils-data dir (from https://github.com/kata198/pacman-utils-data )" >&2
+    fi
+    cd ..
+fi
+
+install -v -m 644 "pacman-utils-data/providesDB" "${VARDIR}/.providesDB"
 RET=$?
 if [ $RET -ne 0 ];
 then
