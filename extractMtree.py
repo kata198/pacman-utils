@@ -746,7 +746,7 @@ def joinThreads(threads):
         sys.stderr.flush()
         # Raise keyboard interrupt in each thread to make them terminate
         for thread in threads:
-            thread._stopThread(ke)
+            thread._stopThread(KeyboardInterrupt)
 
         # Try real quick to cleanup, they are daemon threads so they will be
         #   terminated at end of program forcibly if required
