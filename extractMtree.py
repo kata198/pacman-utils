@@ -766,7 +766,8 @@ class RunnerWorker(StoppableThread):
             # Sometimes we don't find it, maybe format error, maybe didn't fetch
             #  enough (doTarMod will do a full fetch)
             try:
-                mtreeIdx = data.index(b'.MTREE')
+                # Try an rindex, as some tar's have an extra section which also contains filenames
+                mtreeIdx = data.rindex(b'.MTREE')
             except Exception as ex1:
                 if isVerbose is True or useTarMod is False:
                     msg = "Could not find .MTREE in %s - %s - %s." %( repoName, packageName, packageVersion ) 
