@@ -54,10 +54,6 @@
 #    the mirrors
 
 
-# TODO: In major need of a refactor. There's a lot of code, but I really want to
-#   keep this as a standalone module.. So maybe just split it into some classes
-#   to make it neater.
-
 import copy
 import errno
 import gzip
@@ -96,45 +92,43 @@ try:
 except NameError:
     PermissionError = IOError
 
+__version__ = '0.6.0'
+__version_tuple__ = (0, 6, 0)
 
-# I know... a lot of globals.
-#  TODO: Refactor
+####################
+### Constants
+################
 
 global LATEST_FILE_FORMAT
 LATEST_FILE_FORMAT = '0.2'
 
-global SUPPORTED_DATABASE_VERSIONS
 SUPPORTED_DATABASE_VERSIONS = ('0.1', '0.2')
-
-global EXTRACT_MTREE_VERSION
-EXTRACT_MTREE_VERSION = '0.3.0'
 
 global PROVIDES_DB_LOCATION
 PROVIDES_DB_LOCATION = "/var/lib/pacman/.providesDB"
 
-global isVerbose
-isVerbose = False
-
-global isSuperVerbose
-isSuperVerbose = False
-
-global SUBPROCESS_BUFSIZE
-SUBPROCESS_BUFSIZE = 1024 * 500 # 500K Bufsize
-
-global SHORT_FETCH_SIZE
-SHORT_FETCH_SIZE = 1024 * 200 # Try to fetch first 200K to find MTREE
 
 # USE_ARCH - Package arch to use. TODO: Allow others
 #   NOTE: If this arch is not found, "any" will be tried
 global USE_ARCH
 USE_ARCH = "x86_64" 
 
-global MAX_THREADS
+
+####################
+### Tuneables
+################
+
+
+DEFAULT_SUBPROCESS_BUFSIZE = 1024 * 500 # 500K Bufsize
+
+DEFAULT_SHORT_FETCH_SIZE = 1024 * 200 # Try to fetch first 200K to find MTREE
+
+
+# MAX_THREADS - Max number of threads
 MAX_THREADS = 6
 
-global SHORT_TIMEOUT
+# SHORT_TIMEOUT/LONG_TIMEOUT - Timeouts for short read and full read, in seconds
 SHORT_TIMEOUT = 15
-global LONG_TIMEOUT
 LONG_TIMEOUT = ( 60 * 8 )
 
 # Max extra urls added to each thread.
@@ -143,19 +137,24 @@ LONG_TIMEOUT = ( 60 * 8 )
 global MAX_EXTRA_URLS
 MAX_EXTRA_URLS = 3
 
-global MAX_REPOS
 MAX_REPOS = MAX_THREADS + MAX_EXTRA_URLS
 
-global ALL_STR_TYPES
 
-ALL_STR_TYPES = [ str, bytes ]
-try:
-    unicode
-    ALL_STR_TYPES.append(unicode)
-except:
-    unicode = str
+####################
+### Definitions
+################
 
-ALL_STR_TYPES = tuple(ALL_STR_TYPES)
+
+if sys.version_info.major == 2:
+    ALL_STR_TYPES = ( str, unicode )
+    ALL_DECODED_STR_TYPES = ( str, unicode )
+else:
+    ALL_STR_TYPES = ( str, bytes )
+    ALL_DECODED_STR_TYPES = ( str, )
+
+isStrType = lambda arg : issubclass(arg.__class__, ALL_STR_TYPES)
+isDecodedStrType = lambda arg : issubclass(arg.__class__, ALL_DECODED_STR_TYPES)
+
 
 
 # Try to use shared memory slot, if available
@@ -198,7 +197,6 @@ def convertOldDatabase(oldVersion, data):
         @raises - FailedToConvertDatabaseException if failure to convert
     '''
     global LATEST_FILE_FORMAT
-    global ALL_STR_TYPES
 
     if oldVersion == LATEST_FILE_FORMAT:
         return
@@ -209,7 +207,7 @@ def convertOldDatabase(oldVersion, data):
                 continue
 
             oldData = data[key]
-            if issubclass(oldData.__class__, ALL_STR_TYPES):
+            if isStrType(oldData.__class__):
                 # If string, was an error
                 newData = { 
                     'files'   : [],   # No files
@@ -274,7 +272,7 @@ def writeDatabase(results):
     return wroteTo
 
 
-def decompressDataSubprocess(data, cmd):
+def decompressDataSubprocess(data, cmd, bufSize=DEFAULT_SUBPROCESS_BUFSIZE):
     '''
         decompressDataSubprocess - Decompress given compressed #data, using
             a provided decompression command, #cmd
@@ -285,9 +283,12 @@ def decompressDataSubprocess(data, cmd):
             (several orders of magnitude faster)
 
         @param data <bytes> - Compressed data
+
         @param cmd  list<str> - Decompression command. Will NOT use a whell to launch,
             so first element should be a fully-resolved command, followed by
             args to decompress, read from stdin, write to stdout
+
+        @param bufSize <int> default DEFAULT_SUBPROCESS_BUFSIZE - Number of bytes to use for buffers
         
         @return <bytes> - Decompressed data
 
@@ -296,10 +297,7 @@ def decompressDataSubprocess(data, cmd):
             such as if this is called from a func_timeout function or StoppableThread,
             it will clean up and then raise that exception after cleanup.
 
-        NOTE: Uses SUBPROCESS_BUFSIZE as the buffer size for compressing/decompressing
-
     '''
-    global SUBPROCESS_BUFSIZE
 
     useTempDir = getUseTempDir()
 
@@ -313,12 +311,12 @@ def decompressDataSubprocess(data, cmd):
     try:
 
 
-        tempFile = tempfile.NamedTemporaryFile(mode='w+b', buffering=SUBPROCESS_BUFSIZE, dir=useTempDir, prefix='mtree_', delete=True)
+        tempFile = tempfile.NamedTemporaryFile(mode='w+b', buffering=bufSize, dir=useTempDir, prefix='mtree_', delete=True)
         tempFile.write(data)
         tempFile.flush()
         tempFile.seek(0)
 
-        pipe = subprocess.Popen(cmd, shell=False, stdin=tempFile, stdout=subprocess.PIPE, stderr=devnull, close_fds=True, bufsize=SUBPROCESS_BUFSIZE)
+        pipe = subprocess.Popen(cmd, shell=False, stdin=tempFile, stdout=subprocess.PIPE, stderr=devnull, close_fds=True, bufsize=bufSize)
         time.sleep(.01)
 
         result = pipe.stdout.read()
@@ -361,7 +359,7 @@ def decompressDataSubprocess(data, cmd):
 
     return result
 
-def decompressZlib(data):
+def decompressZlib(data, bufSize=DEFAULT_SUBPROCESS_BUFSIZE):
     '''
         decompressZlib - Decompress zlib/gz/DEFLATE data using external executable
 
@@ -369,13 +367,15 @@ def decompressZlib(data):
         
         @param data <bytes> - Compressed data
 
+        @param bufSize <int> default DEFAULT_SUBPROCESS_BUFSIZE - Number of bytes to use for buffer size
+
         @return data <bytes> - Decompressed data
 
     '''
     # -dnc - Decompress to stdout and don't worry about file
-    return decompressDataSubprocess(data, ['/usr/bin/gzip', '-dnc'])
+    return decompressDataSubprocess(data, ['/usr/bin/gzip', '-dnc'], bufSize)
 
-def decompressXz(data):
+def decompressXz(data, bufSize=DEFAULT_SUBPROCESS_BUFSIZE):
     '''
         decompressXz - Decompress lzma/xz data using external executable
 
@@ -383,12 +383,14 @@ def decompressXz(data):
         
         @param data <bytes> - Compressed data
 
+        @param bufSize <int> default DEFAULT_SUBPROCESS_BUFSIZE - Number of bytes to use for buffer size
+
         @return data <bytes> - Decompressed data
 
     '''
     # -dnc - Decompress to stdout and don't worry about file
     # -dc - Decompress to stdout
-    return decompressDataSubprocess(data, ['/usr/bin/xz', '-dc'])
+    return decompressDataSubprocess(data, ['/usr/bin/xz', '-dc'], bufSize)
 
 
 def getFileSizeFromTarHeader(header):
@@ -447,13 +449,17 @@ def getFilenamesFromMtree(mtreeContents):
 
     return ret
 
-def fetchFromUrl(url, numBytes):
+def fetchFromUrl(url, numBytes, isSuperVerbose=False):
     '''
         fetchFromUrl - Fetches #numBytes bytes of data from a given #url
 
           @param url <str> - Url to fetch
+
           @param numBytes <None/int> - If None, fetch entire file.
              Otherwise, fetch first N bytes.
+          
+          @param isSuperVerbose <bool> default False, if True will print curl progress
+            This will get messy if numThreads > 1
           
           @return <bytes> - File data
 
@@ -463,7 +469,6 @@ def fetchFromUrl(url, numBytes):
             This will get real ugly when number of threads are > 1
     '''
 
-    global isSuperVerbose
 
     useStderr = None
 
@@ -487,7 +492,7 @@ def fetchFromUrl(url, numBytes):
         useStderr.close()
 
     if b'404 Not Found' in urlContents and '-x86_64' in url:
-        return fetchFromUrl(url.replace('-x86_64', '-any'), numBytes)
+        return fetchFromUrl(url.replace('-x86_64', '-any'), numBytes, isSuperVerbose)
 
     return urlContents
 
@@ -546,6 +551,8 @@ def getRepoUrls(maxRepos=MAX_REPOS):
           TODO: This replace should happen in another function, in case $repo comes AFTER $arch
             No repos as far as I can tell do this, as they mirror a fixed format, but it IS possible
     '''
+    global USE_ARCH
+
     if not maxRepos:
         gatheredEnough = lambda _repos : False
     else:
@@ -659,7 +666,7 @@ class RunnerWorker(StoppableThread):
             @see createThreads
     '''
 
-    def __init__(self, doPackages, resultsRef, failedPackages, repoUrls, timeout=SHORT_TIMEOUT, longTimeout=LONG_TIMEOUT, isVerbose=False, shortFetchSize=SHORT_FETCH_SIZE):
+    def __init__(self, doPackages, resultsRef, failedPackageInfos, repoUrls, shortFetchSize=DEFAULT_SHORT_FETCH_SIZE, timeout=SHORT_TIMEOUT, longTimeout=LONG_TIMEOUT, isVerbose=False, isSuperVerbose=False):
         '''
             __init__ - Create a "RunnerWorker" object
 
@@ -669,30 +676,34 @@ class RunnerWorker(StoppableThread):
 
               @param resultsRef RefObj < dict > - Reference to the global results 
 
-              @param failedPackages list - Global list where failed package infos should be appended
+              @param failedPackageInfos list - Global list where failed package infos should be appended
 
               @param repoUrls list<str> - A list of urls, ready to be used as a format string (contains two %s, "repo" and "arch").
                 First is primary url
+
+              @param shortFetchSize <int> default DEFAULT_SHORT_FETCH_SIZE - Number of bytes to fetch for a "short fetch"
 
               @param timeout <float> Default SHORT_TIMEOUT , The "short"/standard timeout period per package
 
               @param longTimeout <float> default LONG_TIMEOUT - The "long"/retry timeout period per package
 
-              @param isVerbose <bool> - Whether to be verbose or not
+              @param isVerbose <bool> default False - Whether to be verbose or not
 
-              @param shortFetchSize <int> - Number of bytes to fetch for a "short fetch"
+              @param isSuperVerbose <bool> default False - Whether to be "super verbose"
+
         '''
         StoppableThread.__init__(self)
 
-        self.isVerbose = isVerbose
-        self.shortFetchSize = shortFetchSize
 
         self.doPackages = doPackages
         self.resultsRef = resultsRef
-        self.failedPackages = failedPackages
+        self.failedPackageInfos = failedPackageInfos
         self.repoUrls = repoUrls
         self.timeout = timeout
         self.longTimeout = longTimeout
+        self.shortFetchSize = shortFetchSize
+        self.isVerbose = isVerbose
+        self.isSuperVerbose = isSuperVerbose
 
     ##############################################
     ######## doOne - Do a single package
@@ -822,7 +833,7 @@ class RunnerWorker(StoppableThread):
                 Uses args from init -
                     doPackages
                     resultsRef
-                    failedPackages
+                    failedPackageInfos
                     repoUrls
                     timeout
                     longTimeout
@@ -832,7 +843,7 @@ class RunnerWorker(StoppableThread):
 
         doPackages = self.doPackages
         resultsRef = self.resultsRef
-        failedPackages = self.failedPackages
+        failedPackageInfos = self.failedPackageInfos
         repoUrls = self.repoUrls
         timeout = self.timeout
         longTimeout = self.longTimeout
@@ -894,7 +905,7 @@ class RunnerWorker(StoppableThread):
                             isPackageMarkedFailed = True
                             try:
                                 exc_info = sys.exc_info()
-                                failedPackages.append ( (repoName, packageName, packageVersion) )
+                                failedPackageInfos.append ( (repoName, packageName, packageVersion) )
                                 errStr = 'Error processing %s - %s : < %s >: %s\n\n' %(repoName, packageName, e.__class__.__name__, str(e))
                                 sys.stderr.write(errStr)
                                 if isVerbose:
@@ -906,7 +917,7 @@ class RunnerWorker(StoppableThread):
 
                     if didIt is False and isPackageMarkedFailed is False:
                         # We failed, and have not already marked as failed.
-                        failedPackages.append ( (repoName, packageName, packageVersion) )
+                        failedPackageInfos.append ( (repoName, packageName, packageVersion) )
                         errStr = 'Error TIMEOUT processing %s - %s : FunctionTimedOut\n\n' %(repoName, packageName )
                         sys.stderr.write(errStr)
                         results[packageName] = { 'files' : [], 'version' : packageVersion, 'error' : errStr }
@@ -919,7 +930,7 @@ class RunnerWorker(StoppableThread):
                     exc_info = sys.exc_info()
                     traceback.print_exception(*exc_info)
                 try:
-                    failedPackages.append ( (repoName, packageName, packageVersion) )
+                    failedPackageInfos.append ( (repoName, packageName, packageVersion) )
                     errStr = 'Error processing %s - %s : < %s >: %s\n\n' %(repoName, packageName, e.__class__.__name__, str(e))
                     sys.stderr.write(errStr)
                     results[packageName] = { 'files' : [], 'version' : packageVersion, 'error' : errStr }
@@ -931,14 +942,14 @@ class RunnerWorker(StoppableThread):
 
 class Runner(object):
     
-    def __init__(self, numThreads, allPackagesInfo, repoUrls, resultsRef, failedPackages, timeout=SHORT_TIMEOUT, longTimeout=LONG_TIMEOUT):
+    def __init__(self, numThreads, allPackageInfos, repoUrls, resultsRef, failedPackageInfos, shortFetchSize=DEFAULT_SHORT_FETCH_SIZE, timeout=SHORT_TIMEOUT, longTimeout=LONG_TIMEOUT, isVerbose=False, isSuperVerbose=False):
         '''
             __init__ - Create a Runner. If numThreads > 1, will run as threads. Otherwise,
                         will run inline in current process.
 
                 @param numThreads <int> - Number of threads to start
 
-                @param allPackagesInfo list< tuple< str, str, str > > - List of package infos
+                @param allPackageInfos list< tuple< str, str, str > > - List of package infos
                     (from getAllPackagesInfo )
 
                 @param repoUrls list<str> - A list of repos to use.
@@ -946,22 +957,31 @@ class Runner(object):
 
                 @param resultsRef RefObj<dict> - RefObj to the "results" dict
 
-                @param failedPackages list - A list used to store failed package infos
+                @param shortFetchSize <int> default DEFAULT_SHORT_FETCH_SIZE - Number of bytes to fetch for a "short fetch"
+
+                @param failedPackageInfos list - A list used to store failed package infos
 
                 @param timeout <float> Default SHORT_TIMEOUT , The "short"/standard timeout period per package
 
                 @param longTimeout <float> default LONG_TIMEOUT - The "long"/retry timeout period per package
 
+                @param isVerbose <bool> default False, if True, will print more verbose output
+
+                @param isSuperVerbose <bool> default False, if True will print super verbose output
+
                 NOTE: Call .run to begin execution
         '''
 
         self.numThreads = numThreads
-        self.allPackagesInfo = allPackagesInfo
+        self.allPackageInfos = allPackageInfos
         self.repoUrls = repoUrls
         self.resultsRef = resultsRef
-        self.failedPackages = failedPackages
+        self.failedPackageInfos = failedPackageInfos
+        self.shortFetchSize = shortFetchSize
         self.timeout = timeout
         self.longTimeout = longTimeout
+        self.isVerbose = isVerbose
+        self.isSuperVerbose = isSuperVerbose
 
         self.threads = self._createThreads()
 
@@ -984,7 +1004,7 @@ class Runner(object):
 
                 @param numThreads <int> - Number of threads to start
 
-                @param allPackagesInfo list< tuple< str, str, str > > - List of package infos
+                @param allPackageInfos list< tuple< str, str, str > > - List of package infos
                     (from getAllPackagesInfo )
 
                 @param repoUrls list<str> - A list of repos to use.
@@ -992,11 +1012,11 @@ class Runner(object):
 
                 @param resultsRef RefObj<dict> - RefObj to the "results" dict
 
-                @param failedPackages list - A list used to store failed package infos
+                @param failedPackageInfos list - A list used to store failed package infos
 
 
                 @return list < StoppableThread > - A list of StoppableThreads set to process
-                    a split subset of #allPackagesInfo
+                    a split subset of #allPackageInfos
 
                 NOTES:
                     
@@ -1010,22 +1030,25 @@ class Runner(object):
 
         '''
         global MAX_EXTRA_URLS
-        global isVerbose
+
 
         numThreads = self.numThreads
-        allPackagesInfo = self.allPackagesInfo
+        allPackageInfos = self.allPackageInfos
         repoUrls = self.repoUrls
         resultsRef = self.resultsRef
-        failedPackages = self.failedPackages
+        failedPackageInfos = self.failedPackageInfos
+        shortFetchSize = self.shortFetchSize
 
         timeout = self.timeout
         longTimeout = self.longTimeout
+        isVerbose = self.isVerbose
+        isSuperVerbose = self.isSuperVerbose
 
 
         threads = []
 
         if numThreads > 1:
-            numPackages = len(allPackagesInfo)
+            numPackages = len(allPackageInfos)
             # Split up for threads with primary repo being the Nth repo, and any extra repos not
             #  assigned to a thread get appended as extras. At the bottom we will single-thread
             #  in error mode with all repos and a super-long timeout.
@@ -1033,9 +1056,9 @@ class Runner(object):
             numPerEach = numPackages // numThreads
             for i in range(numThreads):
                 if i == numThreads - 1:
-                    splitPackages.append( allPackagesInfo[ (numPerEach * i) : ] )
+                    splitPackages.append( allPackageInfos[ (numPerEach * i) : ] )
                 else:
-                    splitPackages.append( allPackagesInfo[ (numPerEach * (i)) : (numPerEach * (i+1)) ] )
+                    splitPackages.append( allPackageInfos[ (numPerEach * (i)) : (numPerEach * (i+1)) ] )
 
             if numThreads > 1:
                 print ( "Starting %d threads...\n" %(numThreads,))
@@ -1046,11 +1069,11 @@ class Runner(object):
                     print ( "Thread %d primary repo: %s" %(i, repoUrls[i]) )
                 myRepoUrls = [ repoUrls[i] ] + repoUrls[numThreads : numThreads + MAX_EXTRA_URLS]
 
-                thisThread = RunnerWorker(packageSet, resultsRef, failedPackages, myRepoUrls, isVerbose=isVerbose, shortFetchSize=SHORT_FETCH_SIZE, timeout=timeout, longTimeout=longTimeout)
+                thisThread = RunnerWorker(packageSet, resultsRef, failedPackageInfos, myRepoUrls, shortFetchSize=shortFetchSize, timeout=timeout, longTimeout=longTimeout, isVerbose=isVerbose, isSuperVerbose=isSuperVerbose)
                 threads.append(thisThread)
             else:
                 
-                thisThread = RunnerWorker(allPackagesInfo, resultsRef, failedPackages, repoUrls, isVerbose=isVerbose, shortFetchSize=SHORT_FETCH_SIZE, timeout=timeout, longTimeout=longTimeout)
+                thisThread = RunnerWorker(allPackageInfos, resultsRef, failedPackageInfos, repoUrls, shortFetchSize=shortFetchSize, timeout=timeout, longTimeout=longTimeout, isVerbose=isVerbose, isSuperVerbose=isSuperVerbose)
                 threads.append(thisThread)
 
 
@@ -1184,7 +1207,7 @@ def prompt(promptMsg, allowedResults=None, tryAgainMsg=None):
             tryAgainMsgIsCallable = False
 
         if tryAgainMsgIsCallable is False:
-            if not issubclass(tryAgainMsg.__class__, (str, unicode)):
+            if not isDecodedStrType(tryAgainMsg):
                 raise ValueError('tryAgainMsg is not False, but is also not a callable (has __call__ method), nor a string. Is a: ' + str(tryAgainMsg.__class__.__name__) )
     else:
         hasTryAgain = False
@@ -1255,6 +1278,8 @@ if __name__ == '__main__':
     ######## HANDLE ARGUMENTS
     #############################
     convertOnly = False
+    isVerbose = False
+    isSuperVerbose = False
 
     forceOldUpdate = False
 
@@ -1266,7 +1291,7 @@ if __name__ == '__main__':
 
     if '--version' in args:
         sys.stderr.write('extractMtree version %s by Timothy Savannah.\nDatabase version: %s\nSupported database versions: %s\n\n' % (
-            EXTRACT_MTREE_VERSION, LATEST_FILE_FORMAT, ', '.join(SUPPORTED_DATABASE_VERSIONS))
+            __version__, LATEST_FILE_FORMAT, ', '.join(SUPPORTED_DATABASE_VERSIONS))
         )
         sys.exit(0)
 
@@ -1302,6 +1327,7 @@ if __name__ == '__main__':
             forceOldUpdate = True
             args.remove(arg)
         elif superVerboseRE.match(arg):
+            isVerbose = True
             isSuperVerbose = True
             args.remove(arg)
 
@@ -1318,14 +1344,14 @@ if __name__ == '__main__':
     if not convertOnly:
         refreshPacmanDatabase()
 
-#    allPackagesInfo = [ ('core', 'binutils', '2.28.0-2') ]
-    allPackagesInfo = getAllPackagesInfo()
+#    allPackageInfos = [ ('core', 'binutils', '2.28.0-2') ]
+    allPackageInfos = getAllPackagesInfo()
 
     results = {}
     resultsRef = RefObj(results)
 
 
-    sys.stdout.write('Read %d total packages.\n' %( len(allPackagesInfo), ))
+    sys.stdout.write('Read %d total packages.\n' %( len(allPackageInfos), ))
 
     priorDBContents = None
     try:
@@ -1377,7 +1403,7 @@ if __name__ == '__main__':
 
             # Assmemble new package info list, including only the packages we need to update
             newPackagesInfo = []
-            for packageInfo in allPackagesInfo:
+            for packageInfo in allPackageInfos:
                 pkgName = packageInfo[1]
                 pkgVersion = packageInfo[2]
 
@@ -1410,8 +1436,8 @@ if __name__ == '__main__':
 
 
 
-            allPackagesInfo = newPackagesInfo
-            sys.stdout.write('\nTrimmed number of updates required to %d\n\n' %(len(allPackagesInfo), ))
+            allPackageInfos = newPackagesInfo
+            sys.stdout.write('\nTrimmed number of updates required to %d\n\n' %(len(allPackageInfos), ))
 
             del oldResults
             del newPackagesInfo
@@ -1455,7 +1481,7 @@ if __name__ == '__main__':
 #        doOne('core', 'binutils', '2.28.0-2', results, fileData)
 #        sys.exit(0)
 
-    failedPackages = []
+    failedPackageInfos = []
 
     ##############################################
     ######## Start up threads and
@@ -1479,12 +1505,12 @@ if __name__ == '__main__':
     else:
         numThreads = MAX_THREADS
 
-    numPackages = len(allPackagesInfo)
+    numPackages = len(allPackageInfos)
 
-    runner = Runner(numThreads, allPackagesInfo, repoUrls, resultsRef, failedPackages)
+    runner = Runner(numThreads, allPackageInfos, repoUrls, resultsRef, failedPackageInfos, isVerbose=isVerbose, isSuperVerbose=isSuperVerbose)
     runner.run()
 
-    del allPackagesInfo
+    del allPackageInfos
     gc.collect()
 
     ##############################################
@@ -1494,24 +1520,24 @@ if __name__ == '__main__':
     try: # TODO: REMOVE ME 
 
 
-        if failedPackages:
-            sys.stderr.write("Need to retry %d packages. Resting for a minute....\n\n" %(len(failedPackages), ))
+        if failedPackageInfos:
+            sys.stderr.write("Need to retry %d packages. Resting for a minute....\n\n" %(len(failedPackageInfos), ))
             time.sleep(60)
 
             if numThreads > 1:
                 # Shuffle up the order to try different mirrors
-                failedPackages = shuffleLst(failedPackages)
+                failedPackageInfos = shuffleLst(failedPackageInfos)
 
             refreshPacmanDatabase()
 
             # Now give up to 8 minutes for each package to complete. This covers if a PAX_FORMAT on a huge file,
             #   slow mirror, etc.
-            newFailedPackages = []
+            newFailedPackageInfos = []
 
-            runner = Runner(numThreads, failedPackages, repoUrls, resultsRef, newFailedPackages)
+            runner = Runner(numThreads, failedPackageInfos, repoUrls, resultsRef, newFailedPackageInfos, timeout=LONG_TIMEOUT, isVerbose=isVerbose, isSuperVerbose=isSuperVerbose)
             runner.run()
 
-            del failedPackages
+            del failedPackageInfos
             gc.collect()
 
             ##################################################
@@ -1519,15 +1545,15 @@ if __name__ == '__main__':
             ########  refresh and check if newer version
             ########  and retry those pkgs with newer version
             ##########################################
-            if newFailedPackages:
-                sys.stderr.write('After completing, still %d failed packages.\nFailed after retry: %s\n\n' %(len(newFailedPackages), '\n'.join(['\t[%s] %s-%s  \t%s' %(failedP[0], failedP[1], failedP[2], results[failedP[1]]['error'] ) for failedP in newFailedPackages]) ) ) 
+            if newFailedPackageInfos:
+                sys.stderr.write('After completing, still %d failed packages.\nFailed after retry: %s\n\n' %(len(newFailedPackageInfos), '\n'.join(['\t[%s] %s-%s  \t%s' %(failedP[0], failedP[1], failedP[2], results[failedP[1]]['error'] ) for failedP in newFailedPackageInfos]) ) ) 
 
                 if refreshPacmanDatabase():
 
 #                    oldVersions = {}
-#                    for packageInfo in newFailedPackages:
+#                    for packageInfo in newFailedPackageInfos:
 #                        oldVersions[packageInfo[1]] = packageInfo[2]
-                    oldVersions = { packageInfo[1] : packageInfo[2] for packageInfo in newFailedPackages }
+                    oldVersions = { packageInfo[1] : packageInfo[2] for packageInfo in newFailedPackageInfos }
 
                     newPackagesInfo = getAllPackagesInfo()
 
@@ -1536,22 +1562,22 @@ if __name__ == '__main__':
 
 
                     # Will try every mirror
-                    stillFailedPackages = []
+                    stillFailedPackageInfos = []
 
-                    runner = Runner(1, updatedPackages, repoUrls, resultsRef, stillFailedPackages)
+                    runner = Runner(1, updatedPackages, repoUrls, resultsRef, stillFailedPackageInfos, timeout=LONG_TIMEOUT, isVerbose=isVerbose, isSuperVerbose=isSuperVerbose)
                     runner.run()
 
                     # Append the failed packages we didn't retry
-                    stillFailedPackages += [packageInfo for packageInfo in newFailedPackages if packageInfo not in stillFailedPackages]
+                    stillFailedPackageInfos += [packageInfo for packageInfo in newFailedPackageInfos if packageInfo not in stillFailedPackageInfos]
 
-                    if stillFailedPackages:
-                        sys.stderr.write('EVEN after refreshing package database, the following packages are total failures:\n\n%s\n\n' %( str([failedP[1] for failedP in stillFailedPackages]), ))
+                    if stillFailedPackageInfos:
+                        sys.stderr.write('EVEN after refreshing package database, the following packages are total failures:\n\n%s\n\n' %( str([failedP[1] for failedP in stillFailedPackageInfos]), ))
 
 
 
                     gc.collect()
 
-            # END: if newFailedPackages
+            # END: if newFailedPackageInfos
 
 
         ##############################################
