@@ -125,6 +125,7 @@ global SHORT_FETCH_SIZE
 SHORT_FETCH_SIZE = 1024 * 200 # Try to fetch first 200K to find MTREE
 
 # USE_ARCH - Package arch to use. TODO: Allow others
+#   NOTE: If this arch is not found, "any" will be tried
 global USE_ARCH
 USE_ARCH = "x86_64" 
 
@@ -641,134 +642,17 @@ def getFileData(filename, decodeWith=None):
         contents = contents.decode(decodeWith)
     return contents
 
-# TODO: Move createThreads, startThreads, joinThreads into a class.
-#   Maybe static methods on Runner, maybe a new class.
 
-def createThreads(numThreads, allPackagesInfo, repoUrls, resultsRef, failedPackages):
+class RunnerWorker(StoppableThread):
     '''
-        createThreads - Create threads to process package info.
-
-            @param numThreads <int> - Number of threads to start
-
-            @param allPackagesInfo list< tuple< str, str, str > > - List of package infos
-                (from getAllPackagesInfo )
-
-            @param repoUrls list<str> - A list of repos to use.
-                Length must be >= numThreads
-
-            @param resultsRef RefObj<dict> - RefObj to the "results" dict
-
-            @param failedPackages list - A list used to store failed package infos
-
-
-            @return list < StoppableThread > - A list of StoppableThreads set to process
-                a split subset of #allPackagesInfo
-
-            NOTES:
-                
-                * For each thread, N, it will use #repoUrls[N] as its "primary" repo.
-                    If there are enough repos available, up to #MAX_EXTRA_URLS starting
-                      at #repoUrls[ numThreads + 1 ] will be allocated to each thread
-                      as "backup" urls
-
-                * The threads created by this method have not been started.
-                    Use "startThreads" to start them.
-
-    '''
-    global SHORT_TIMEOUT
-    global MAX_EXTRA_URLS
-    global isVerbose
-
-    threads = []
-    numPackages = len(allPackagesInfo)
-    # Split up for threads with primary repo being the Nth repo, and any extra repos not
-    #  assigned to a thread get appended as extras. At the bottom we will single-thread
-    #  in error mode with all repos and a super-long timeout.
-    splitPackages = []
-    numPerEach = numPackages // numThreads
-    for i in range(numThreads):
-        if i == numThreads - 1:
-            splitPackages.append( allPackagesInfo[ (numPerEach * i) : ] )
-        else:
-            splitPackages.append( allPackagesInfo[ (numPerEach * (i)) : (numPerEach * (i+1)) ] )
-
-    print ( "Starting %d threads...\n" %(numThreads,))
-    for i in range(numThreads):
-        packageSet = splitPackages[i]
-        if isVerbose:
-            print ( "Thread %d primary repo: %s" %(i, repoUrls[i]) )
-        myRepoUrls = [ repoUrls[i] ] + repoUrls[numThreads : numThreads + MAX_EXTRA_URLS]
-
-        thisThread = Runner(packageSet, resultsRef, failedPackages, myRepoUrls, isVerbose=isVerbose, shortFetchSize=SHORT_FETCH_SIZE, timeout=SHORT_TIMEOUT)
-        threads.append(thisThread)
-
-
-    return threads
-
-def startThreads(threads, startOffset=.35):
-    '''
-        startThreads - Start a list of threads, with a given offset between starts.
-            The offset is meant to balance out the network bandwidth requirements,
-             to ensure that we are maxing bandwidth as much as possible.
-            With short reads, threads would otherwise all be doing network I/O followed
-              by local I/O at the same time.
-
-          @param threads list<threading.Thread> - Threads to start
-
-          @param startOffset <float> - Offset between thread starts
-
-    '''
-    for thisThread in threads:
-        thisThread.start()
-        time.sleep(startOffset)
-
-
-def joinThreads(threads):
-    '''
-        joinThreads - Wait for all threads to complete, 
-                        or shut them down gracefully following control+c
-
-          @param threads list<threading.Thread> - Threads to join
-
-          @return <bool> - True if threads were joined successfully,
-                            False if KeyboardInterrupt caused them to be
-                            stopped
-          
-          TODO: Handle sigterm as well, same as KeyboardInterrupt
-    '''
-    try:
-        for thread in threads:
-            thread.join()
-
-        return True
-    except KeyboardInterrupt as ke:
-        sys.stderr.write ( "\n\nCAUGHT KEYBOARD INTERRUPT, CLOSING DOWN THREADS...\n\n")
-        sys.stderr.flush()
-        # Raise keyboard interrupt in each thread to make them terminate
-        for thread in threads:
-            thread._stopThread(KeyboardInterrupt)
-
-        # Try real quick to cleanup, they are daemon threads so they will be
-        #   terminated at end of program forcibly if required
-        time.sleep(.1)
-
-        for thread in threads:
-            thread.join(.05)
-
-        return False
-
-
-
-class Runner(StoppableThread):
-    '''
-        Runner - A StoppableThread set to run a subset of packages.
+        RunnerWorker - A StoppableThread set to run a subset of packages.
 
             @see createThreads
     '''
 
     def __init__(self, doPackages, resultsRef, failedPackages, repoUrls, timeout=SHORT_TIMEOUT, longTimeout=LONG_TIMEOUT, isVerbose=False, shortFetchSize=SHORT_FETCH_SIZE):
         '''
-            __init__ - Create a "Runner" object
+            __init__ - Create a "RunnerWorker" object
 
               @see createThreads
 
@@ -804,19 +688,16 @@ class Runner(StoppableThread):
     ##############################################
     ######## doOne - Do a single package
     ########################################
-    def doOne(self, repoName, packageName, versionInfo, resultsRef, repoUrl, fetchedData=None, useTarMod=False):
+    def doOne(self, repoName, packageName, packageVersion, repoUrl, fetchedData=None, useTarMod=False):
         '''
             doOne - Do a single package. This is an internal function.
-                Use Runner.run instead.
+                Use RunnerWorker.run instead.
 
                 @param repoName <str> - Repo name to use
 
                 @param packageName <str> - Package name to fetch
 
-                @param versionInfo <str> - The package version
-
-                @param resultsRef RefObj <dict> - RefObj to global results
-                    TODO: Remove this param, already present on class itself
+                @param packageVersion <str> - The package version
 
                 @param repoUrl <str> - Repo url to try
 
@@ -839,7 +720,7 @@ class Runner(StoppableThread):
         results = resultsRef()
 
         if fetchedData is None:
-            finalUrl = repoUrl %( repoName, packageName + "-" + versionInfo + "-x86_64.pkg.tar.xz" )
+            finalUrl = repoUrl %( repoName, packageName + "-" + packageVersion + "-x86_64.pkg.tar.xz" )
             if isVerbose:
                 print ( "Fetching url: " + finalUrl )
 
@@ -868,7 +749,7 @@ class Runner(StoppableThread):
                 mtreeIdx = data.index(b'.MTREE')
             except Exception as ex1:
                 if isVerbose is True or useTarMod is False:
-                    msg = "Could not find .MTREE in %s - %s - %s." %( repoName, packageName, versionInfo ) 
+                    msg = "Could not find .MTREE in %s - %s - %s." %( repoName, packageName, packageVersion ) 
                 if useTarMod is False:
                     msg += ' retrying with full fetch and tar mod.\n\n'
                     raise RetryWithFullTarException(msg)
@@ -887,7 +768,7 @@ class Runner(StoppableThread):
             except Exception as ex2:
                 # If we failed with the "short fetch", try again with full fetch and tar module
                 if useTarMod is False:
-                    return self.doOne(repoName, packageName, versionInfo, resultsRef, repoUrl, fetchedData, useTarMod=True)
+                    return self.doOne(repoName, packageName, packageVersion, repoUrl, fetchedData, useTarMod=True)
                 raise ex2
 
         else:
@@ -912,7 +793,7 @@ class Runner(StoppableThread):
 
         files = getFilenamesFromMtree(mtreeData)
 
-        results[packageName] = { 'files' : files, 'version' : versionInfo, 'error' : None }
+        results[packageName] = { 'files' : files, 'version' : packageVersion, 'error' : None }
         if isVerbose:
             sys.stdout.write("Got %d files for %s.\n\n" %(len(files), packageName ))
 
@@ -951,7 +832,7 @@ class Runner(StoppableThread):
 
         results = resultsRef()
 
-        for repoName, packageName, versionInfo in doPackages:
+        for repoName, packageName, packageVersion in doPackages:
             startTime = time.time()
             gc.collect()
             endTime = time.time()
@@ -962,14 +843,14 @@ class Runner(StoppableThread):
             try:
                 # Try to run a short fetch with short timeout
                 try:
-                    func_timeout.func_timeout(timeout, self.doOne, (repoName, packageName, versionInfo, resultsRef, repoUrls[0]))
+                    func_timeout.func_timeout(timeout, self.doOne, (repoName, packageName, packageVersion, repoUrls[0]))
                 except RetryWithFullTarException as retryException1:
                     # If RetryWithFullTarException is raised, we could not parse the tar file,
                     #   so retry with a full read and long timeout
                     if isVerbose:
                         sys.stderr.write( str(retryException1) )
 
-                    func_timeout.func_timeout(longTimeout, self.doOne, (repoName, packageName, versionInfo, resultsRef, repoUrls[0]), kwargs={'useTarMod' : True} )
+                    func_timeout.func_timeout(longTimeout, self.doOne, (repoName, packageName, packageVersion, repoUrls[0]), kwargs={'useTarMod' : True} )
 
                 except Exception as e:
                     if not isinstance(e, RetryWithFullTarException):
@@ -984,11 +865,11 @@ class Runner(StoppableThread):
                     for nextRepoUrl in repoUrls[1:]:
                         try:
                             try:
-                                func_timeout.func_timeout(timeout, self.doOne, (repoName, packageName, versionInfo, resultsRef, nextRepoUrl))
+                                func_timeout.func_timeout(timeout, self.doOne, (repoName, packageName, packageVersion, nextRepoUrl))
                             except RetryWithFullTarException as retryException1:
                                 # Failed short-fetch, try again with full fetch
 
-                                func_timeout.func_timeout(longTimeout, self.doOne, (repoName, packageName, versionInfo, resultsRef, nextRepoUrl), kwargs = {'useTarMod' : True } )
+                                func_timeout.func_timeout(longTimeout, self.doOne, (repoName, packageName, packageVersion, nextRepoUrl), kwargs = {'useTarMod' : True } )
 
                             except Exception as e:
                                 if not isinstance(e, RetryWithFullTarException):
@@ -1004,22 +885,22 @@ class Runner(StoppableThread):
                             isPackageMarkedFailed = True
                             try:
                                 exc_info = sys.exc_info()
-                                failedPackages.append ( (repoName, packageName, versionInfo) )
+                                failedPackages.append ( (repoName, packageName, packageVersion) )
                                 errStr = 'Error processing %s - %s : < %s >: %s\n\n' %(repoName, packageName, e.__class__.__name__, str(e))
                                 sys.stderr.write(errStr)
                                 if isVerbose:
                                     traceback.print_exception(*exc_info)
-                                results[packageName] = { 'files' : [], 'version' : versionInfo, 'error' : errStr }
+                                results[packageName] = { 'files' : [], 'version' : packageVersion, 'error' : errStr }
                             except:
                                 isPackageMarkedFailed = False
                                 pass
 
                     if didIt is False and isPackageMarkedFailed is False:
                         # We failed, and have not already marked as failed.
-                        failedPackages.append ( (repoName, packageName, versionInfo) )
+                        failedPackages.append ( (repoName, packageName, packageVersion) )
                         errStr = 'Error TIMEOUT processing %s - %s : FunctionTimedOut\n\n' %(repoName, packageName )
                         sys.stderr.write(errStr)
-                        results[packageName] = { 'files' : [], 'version' : versionInfo, 'error' : errStr }
+                        results[packageName] = { 'files' : [], 'version' : packageVersion, 'error' : errStr }
                 except:
                     pass
             except KeyboardInterrupt as ke:
@@ -1029,14 +910,196 @@ class Runner(StoppableThread):
                     exc_info = sys.exc_info()
                     traceback.print_exception(*exc_info)
                 try:
-                    failedPackages.append ( (repoName, packageName, versionInfo) )
+                    failedPackages.append ( (repoName, packageName, packageVersion) )
                     errStr = 'Error processing %s - %s : < %s >: %s\n\n' %(repoName, packageName, e.__class__.__name__, str(e))
                     sys.stderr.write(errStr)
-                    results[packageName] = { 'files' : [], 'version' : versionInfo, 'error' : errStr }
+                    results[packageName] = { 'files' : [], 'version' : packageVersion, 'error' : errStr }
                 except:
                     pass
 
         #END: def runThroughPackages
+
+
+class Runner(object):
+    
+    def __init__(self, numThreads, allPackagesInfo, repoUrls, resultsRef, failedPackages, timeout=SHORT_TIMEOUT, longTimeout=LONG_TIMEOUT):
+        '''
+            __init__ - Create a Runner. If numThreads > 1, will run as threads. Otherwise,
+                        will run inline in current process.
+
+                @param numThreads <int> - Number of threads to start
+
+                @param allPackagesInfo list< tuple< str, str, str > > - List of package infos
+                    (from getAllPackagesInfo )
+
+                @param repoUrls list<str> - A list of repos to use.
+                    Length must be >= numThreads
+
+                @param resultsRef RefObj<dict> - RefObj to the "results" dict
+
+                @param failedPackages list - A list used to store failed package infos
+
+                @param timeout <float> Default SHORT_TIMEOUT , The "short"/standard timeout period per package
+
+                @param longTimeout <float> default LONG_TIMEOUT - The "long"/retry timeout period per package
+
+                NOTE: Call .run to begin execution
+        '''
+
+        self.numThreads = numThreads
+        self.allPackagesInfo = allPackagesInfo
+        self.repoUrls = repoUrls
+        self.resultsRef = resultsRef
+        self.failedPackages = failedPackages
+        self.timeout = timeout
+        self.longTimeout = longTimeout
+
+        self.threads = self._createThreads()
+
+    def run(self):
+        if self.numThreads > 1:
+            self._startThreads()
+
+            didComplete = self._joinThreads()
+            if not didComplete:
+                sys.exit( errno.EPIPE )
+        else:
+            try:
+                self.threads[0].run()
+            except KeyboardInterrupt:
+                sys.exit( errno.EPIPE )
+
+    def _createThreads(self):
+        '''
+            createThreads - Create threads to process package info.
+
+                @param numThreads <int> - Number of threads to start
+
+                @param allPackagesInfo list< tuple< str, str, str > > - List of package infos
+                    (from getAllPackagesInfo )
+
+                @param repoUrls list<str> - A list of repos to use.
+                    Length must be >= numThreads
+
+                @param resultsRef RefObj<dict> - RefObj to the "results" dict
+
+                @param failedPackages list - A list used to store failed package infos
+
+
+                @return list < StoppableThread > - A list of StoppableThreads set to process
+                    a split subset of #allPackagesInfo
+
+                NOTES:
+                    
+                    * For each thread, N, it will use #repoUrls[N] as its "primary" repo.
+                        If there are enough repos available, up to #MAX_EXTRA_URLS starting
+                          at #repoUrls[ numThreads + 1 ] will be allocated to each thread
+                          as "backup" urls
+
+                    * The threads created by this method have not been started.
+                        Use "startThreads" to start them.
+
+        '''
+        global MAX_EXTRA_URLS
+        global isVerbose
+
+        numThreads = self.numThreads
+        allPackagesInfo = self.allPackagesInfo
+        repoUrls = self.repoUrls
+        resultsRef = self.resultsRef
+        failedPackages = self.failedPackages
+
+        timeout = self.timeout
+        longTimeout = self.longTimeout
+
+
+        threads = []
+
+        if numThreads > 1:
+            numPackages = len(allPackagesInfo)
+            # Split up for threads with primary repo being the Nth repo, and any extra repos not
+            #  assigned to a thread get appended as extras. At the bottom we will single-thread
+            #  in error mode with all repos and a super-long timeout.
+            splitPackages = []
+            numPerEach = numPackages // numThreads
+            for i in range(numThreads):
+                if i == numThreads - 1:
+                    splitPackages.append( allPackagesInfo[ (numPerEach * i) : ] )
+                else:
+                    splitPackages.append( allPackagesInfo[ (numPerEach * (i)) : (numPerEach * (i+1)) ] )
+
+            if numThreads > 1:
+                print ( "Starting %d threads...\n" %(numThreads,))
+
+            for i in range(numThreads):
+                packageSet = splitPackages[i]
+                if isVerbose:
+                    print ( "Thread %d primary repo: %s" %(i, repoUrls[i]) )
+                myRepoUrls = [ repoUrls[i] ] + repoUrls[numThreads : numThreads + MAX_EXTRA_URLS]
+
+                thisThread = RunnerWorker(packageSet, resultsRef, failedPackages, myRepoUrls, isVerbose=isVerbose, shortFetchSize=SHORT_FETCH_SIZE, timeout=timeout, longTimeout=longTimeout)
+                threads.append(thisThread)
+            else:
+                
+                thisThread = RunnerWorker(allPackagesInfo, resultsRef, failedPackages, repoUrls, isVerbose=isVerbose, shortFetchSize=SHORT_FETCH_SIZE, timeout=timeout, longTimeout=longTimeout)
+                threads.append(thisThread)
+
+
+        return threads
+
+    def _startThreads(self, startOffset=.35):
+        '''
+            startThreads - Start a list of threads, with a given offset between starts.
+                The offset is meant to balance out the network bandwidth requirements,
+                 to ensure that we are maxing bandwidth as much as possible.
+                With short reads, threads would otherwise all be doing network I/O followed
+                  by local I/O at the same time.
+
+              @param threads list<threading.Thread> - Threads to start
+
+              @param startOffset <float> - Offset between thread starts
+
+        '''
+        for thisThread in self.threads:
+            thisThread.start()
+            time.sleep(startOffset)
+
+
+    def _joinThreads(self):
+        '''
+            joinThreads - Wait for all threads to complete, 
+                            or shut them down gracefully following control+c
+
+              @param threads list<threading.Thread> - Threads to join
+
+              @return <bool> - True if threads were joined successfully,
+                                False if KeyboardInterrupt caused them to be
+                                stopped
+              
+              TODO: Handle sigterm as well, same as KeyboardInterrupt
+        '''
+        threads = self.threads
+
+        try:
+            for thread in threads:
+                thread.join()
+
+            return True
+        except KeyboardInterrupt as ke:
+            sys.stderr.write ( "\n\nCAUGHT KEYBOARD INTERRUPT, CLOSING DOWN THREADS...\n\n")
+            sys.stderr.flush()
+            # Raise keyboard interrupt in each thread to make them terminate
+            for thread in threads:
+                thread._stopThread(KeyboardInterrupt)
+
+            # Try real quick to cleanup, they are daemon threads so they will be
+            #   terminated at end of program forcibly if required
+            time.sleep(.1)
+
+            for thread in threads:
+                thread.join(.05)
+
+            return False
 
 
 def prompt(promptMsg, allowedResults=None, tryAgainMsg=None):
@@ -1389,8 +1452,8 @@ if __name__ == '__main__':
     ######## Start up threads and
     ########   begin processing
     ########################################
-    numRepos = splitBy = len(repoUrls)
-    if splitBy == 0:
+    numRepos = len(repoUrls)
+    if numRepos == 0:
         sys.stderr.write('No uncommented repos in /etc/pacman.d/mirrorlist !\n\n')
         sys.exit(1)
 
@@ -1403,36 +1466,14 @@ if __name__ == '__main__':
             sys.stderr.write('\nAborting based on user input.\n\n')
             sys.exit(1)
 
-        MAX_THREADS = splitBy
-    elif numRepos > MAX_THREADS:
-        # They have more repos defined
-        splitBy = MAX_THREADS
+        numThreads = numRepos
+    else:
+        numThreads = MAX_THREADS
 
     numPackages = len(allPackagesInfo)
 
-    threads = []
-    if splitBy > 1:
-        # Split up for threads with primary repo being the Nth repo, and any extra repos not
-        #  assigned to a thread get appended as extras. At the bottom we will single-thread
-        #  in error mode with all repos and a super-long timeout.
-        threads = createThreads(splitBy, allPackagesInfo, repoUrls, resultsRef, failedPackages)
-        startThreads(threads)
-    else:
-        try:
-            runner = Runner(allPackagesInfo, resultsRef, failedPackages, repoUrls, timeout=SHORT_TIMEOUT)
-            runner.run()
-        except KeyboardInterrupt as ke:
-            sys.stderr.write ( "\n\nCAUGHT KEYBOARD INTERRUPT, QUITTING...\n\n")
-            sys.stderr.flush()
-            sys.exit(errno.EPIPE)
-
-    if threads:
-        
-        wasCompleted = joinThreads(threads)
-
-        if not wasCompleted:
-            sys.exit(errno.EPIPE)
-
+    runner = Runner(numThreads, allPackagesInfo, repoUrls, resultsRef, failedPackages)
+    runner.run()
 
     del allPackagesInfo
     gc.collect()
@@ -1448,7 +1489,7 @@ if __name__ == '__main__':
             sys.stderr.write("Need to retry %d packages. Resting for a minute....\n\n" %(len(failedPackages), ))
             time.sleep(60)
 
-            if MAX_THREADS > 1:
+            if numThreads > 1:
                 # Shuffle up the order to try different mirrors
                 failedPackages = shuffleLst(failedPackages)
 
@@ -1458,22 +1499,8 @@ if __name__ == '__main__':
             #   slow mirror, etc.
             newFailedPackages = []
 
-            if splitBy > 1:
-                threads = createThreads(splitBy, failedPackages, repoUrls, resultsRef, newFailedPackages)
-                startThreads(threads)
-
-                wasCompleted = joinThreads(threads)
-
-                if not wasCompleted:
-                    sys.exit(errno.EPIPE)
-            else:
-                try:
-                    runner = Runner( failedPackages, resultsRef, newFailedPackages, repoUrls, timeout=LONG_TIMEOUT, isVerbose=isVerbose)
-                    runner.run()
-                except KeyboardInterrupt as ke:
-                    
-                    sys.exit(errno.EPIPE)
-
+            runner = Runner(numThreads, failedPackages, repoUrls, resultsRef, newFailedPackages)
+            runner.run()
 
             del failedPackages
             gc.collect()
@@ -1501,11 +1528,9 @@ if __name__ == '__main__':
 
                     # Will try every mirror
                     stillFailedPackages = []
-                    try:
-                        runner = Runner( updatedPackages, resultsRef, stillFailedPackages, repoUrls, timeout=LONG_TIMEOUT, isVerbose=isVerbose)
-                        runner.run()
-                    except:
-                        pass
+
+                    runner = Runner(1, updatedPackages, repoUrls, resultsRef, stillFailedPackages)
+                    runner.run()
 
                     # Append the failed packages we didn't retry
                     stillFailedPackages += [packageInfo for packageInfo in newFailedPackages if packageInfo not in stillFailedPackages]
