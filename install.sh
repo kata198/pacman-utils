@@ -3,8 +3,7 @@
 # Installs all the pacman-utils
 #  use ./install.sh PREFIX=$HOME to install to local home dir.
 
-BIN_FILES="installpackage archsrc-buildpkg whatprovides whatprovides_upstream mkgcdatar getpkgs abs2 archsrc-getpkg pacman-mirrorlist-optimize"
-SBIN_FILES="extractMtree.py"
+BIN_FILES="installpackage archsrc-buildpkg whatprovides whatprovides_upstream mkgcdatar getpkgs abs2 archsrc-getpkg pacman-mirrorlist-optimize extractMtree.py"
 
 process_installdir_args() {
 
@@ -89,14 +88,9 @@ process_installdir_args "$@";
 BINDIR="${DESTDIR}/${PREFIX}/bin"
 BINDIR="$(echo "${BINDIR}" | sed 's|//|/|g')"
 
-SBINDIR="${DESTDIR}/${PREFIX}/sbin"
-SBINDIR="$(echo "${SBINDIR}" | sed 's|//|/|g')"
-
 mkdir -p "${BINDIR}"
-mkdir -p "${SBINDIR}"
 
 install -v -m 755 ${BIN_FILES} "${BINDIR}" || failed_install 1 "Install programs to '${BINDIR}'"
-install -v -m 755 ${SBIN_FILES} "${SBINDIR}" || failed_install 1 "Install superuser programs to '${SBINDIR}'"
 
 cd "${BINDIR}"
 rm -f archsrc-buildpkg.sh buildpkg.sh
