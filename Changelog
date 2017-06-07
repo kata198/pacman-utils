@@ -1,3 +1,9 @@
+0.6.0 - Jun 7 2017
+- Move data into different repo: pacman-utils-data
+- Lots of refactoring and fixups to extractMtree.py
+- Support "?" in glob expressions with whatprovides/whatprovides_upstream
+- Sort output of whatprovides/whatprovides_upstream
+
 0.5.3 - Jun 5 2017
 - Fix "whatprovides" cache file usage.
 
