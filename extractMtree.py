@@ -1460,6 +1460,10 @@ if __name__ == '__main__':
         sys.exit(3)
 
 
+    if len(allPackageInfos) == 0:
+        print ( "Nothing to do.\n")
+        sys.exit(0)
+
 
     if not os.access(PROVIDES_DB_LOCATION, os.W_OK):
         sys.stdout.write('Cannot write to "%s". Will create temp file.\n' %((PROVIDES_DB_LOCATION, )) )
