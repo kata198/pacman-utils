@@ -1050,6 +1050,11 @@ class Runner(object):
 
         if numThreads > 1:
             numPackages = len(allPackageInfos)
+
+            if numPackages < numThreads:
+                if isVerbose:
+                    print ( "Less packages than threads! Shrinking number of threads to %d.." %(numThreads, ))
+                numThreads = numPackages
             # Split up for threads with primary repo being the Nth repo, and any extra repos not
             #  assigned to a thread get appended as extras. At the bottom we will single-thread
             #  in error mode with all repos and a super-long timeout.
