@@ -140,7 +140,11 @@ LONG_TIMEOUT = ( 60 * 8 )
 # Max extra urls added to each thread.
 #  Normally, a repo is assigned to a thread, but if any are extra
 #  up to this many will be made available to each thread.
+global MAX_EXTRA_URLS
 MAX_EXTRA_URLS = 3
+
+global MAX_REPOS
+MAX_REPOS = MAX_THREADS + MAX_EXTRA_URLS
 
 global ALL_STR_TYPES
 
@@ -532,7 +536,7 @@ def getAllPackagesInfo():
 
 
 
-def getRepoUrls():
+def getRepoUrls(maxRepos=MAX_REPOS):
     '''
         getRepoUrls - Extract the repo urls from /etc/pacman.d/mirrorlist
 
@@ -542,6 +546,11 @@ def getRepoUrls():
           TODO: This replace should happen in another function, in case $repo comes AFTER $arch
             No repos as far as I can tell do this, as they mirror a fixed format, but it IS possible
     '''
+    if not maxRepos:
+        gatheredEnough = lambda _repos : False
+    else:
+        gatheredEnough = lambda _repos : len(_repos) >= maxRepos
+
     nextLine = True
     repos = []
 
@@ -549,7 +558,7 @@ def getRepoUrls():
 
     with open('/etc/pacman.d/mirrorlist', 'rt') as f:
         nextLine = f.readline()
-        while nextLine != '':
+        while nextLine != '' and not gatheredEnough(repos):
             matchObj = repoRE.match(nextLine.strip())
             if matchObj:
                 groupDict = matchObj.groupdict()
