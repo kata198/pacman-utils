@@ -84,7 +84,7 @@ failed_install() {
 ## MAIN
 #########
 
-process_installdir_args;
+process_installdir_args "$@";
 
 BINDIR="${DESTDIR}/${PREFIX}/bin"
 BINDIR="$(echo "${BINDIR}" | sed 's|//|/|g')"
