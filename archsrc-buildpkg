@@ -79,7 +79,12 @@ update_abs() {
     echo "${ABS_DIR}"
 }
 
-[ ! -d "/usr/src/arch" ] && mkdir -p '/usr/src/arch'
+if [ ! -d "/usr/src/arch" ];
+then
+    mkdir -p '/usr/src/arch'
+fi
+chgrp users /usr/src/arch
+chmod 2775 /usr/src/arch
 
 
 PKGNAME="$1"
