@@ -166,6 +166,18 @@ Gets the latest version of an archlinux package build files, and checks them out
 Optionally backs up the old directory. Will not remove data without user input.
 
 
+aur-getpkg
+----------
+
+Same as "archsrc-getpkg", except fetches an AUR package
+
+
+aur-buildpkg
+------------
+
+Same as "archsrc-buildpkg", except builds an AUR package
+
+
 getpkgs
 -------
 
