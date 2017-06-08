@@ -1,3 +1,8 @@
+0.6.1 - Jun 7 2017
+- Fix a %s without an arg in whatprovides_upstream (when providesDB is not
+present)
+
+
 0.6.0 - Jun 7 2017
 - Move data into different repo: pacman-utils-data
 - Lots of refactoring and fixups to extractMtree.py
