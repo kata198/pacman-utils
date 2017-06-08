@@ -53,7 +53,7 @@ if __name__ == '__main__':
                     break
 
     if not os.path.exists(PROVIDES_DB) or not os.access(PROVIDES_DB, os.R_OK):
-        sys.stderr.write("No database or can't read database from %s. Use a pre-provided database (check the homepage) or run extractMtree.py to build your own.\n\n")
+        sys.stderr.write("No database or can't read database from %s. Use a pre-provided database (check the homepage) or run extractMtree.py to build your own.\n\n" %(PROVIDES_DB, ))
         sys.exit(2)
 
     with open('/var/lib/pacman/.providesDB', 'rb') as f:
