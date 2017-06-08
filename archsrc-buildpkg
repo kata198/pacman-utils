@@ -14,6 +14,18 @@ echoerr() {
     echo "$@" >&2
 }
 
+if [ "$1" = "--help" ];
+then
+    cat -- >&2 <<EOT
+Usage: archsrc-buildpkg [packageName]
+  Downloads and builds a given package in arch repos
+
+EOT
+    exit 0;
+fi
+
+
+
 
 if [ "$1" != "_secret_arg_" ];
 then

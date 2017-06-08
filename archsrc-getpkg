@@ -13,10 +13,12 @@
 if [ "$1" = "--help" ];
 then
     cat -- >&2 <<EOT
-Usage: archsrc-getpkg - Downloads the latest build files for a package into current dir.
+Usage: archsrc-getpkg [pkgname]
+  Downloads the latest build files for a package into current dir.
 
   You probably want to run this in /usr/src/arch, which is where pacman-utils expects you to
     checkout packages.
+
 EOT
     exit 0;
 fi
