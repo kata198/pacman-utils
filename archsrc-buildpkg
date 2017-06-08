@@ -5,7 +5,7 @@
 # Copyright (c) 2017 Timothy Savannah - All Rights Reserved
 #   This code is licensed under the terms of the APACHE license version 2.0
 #
-# buildpkg.sh - Builds and installs one or more packages.
+# archsrc-buildpkg - Builds and installs one or more packages.
 #   Run as regular user, and provide as arguments a list of packages
 
 
@@ -20,7 +20,7 @@ then
     BUILD_AS="$(whoami)"
     if [ "$BUILD_AS" = "root" ];
     then
-        echoerr "You must run buildpkg.sh as a non-root user (to build the package)."
+        echoerr "You must run archsrc-buildpkg as a non-root user (to build the package)."
         exit 1;
     fi
     if [ $# -eq 0 ];
