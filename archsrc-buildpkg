@@ -84,13 +84,6 @@ exiterr() {
     exit 2
 }
 
-update_abs() {
-
-    ABS_DIR="$(abs2 "${1}")"
-
-    echo "${ABS_DIR}"
-}
-
 if [ ! -d "/usr/src/arch" ];
 then
     mkdir -p '/usr/src/arch'
@@ -98,24 +91,17 @@ fi
 chgrp users /usr/src/arch
 chmod 2775 /usr/src/arch
 
+cd /usr/src/arch
+
 
 PKGNAME="$1"
 
-ABS_DIR="$(update_abs "${PKGNAME}")"
-if [ -z "${ABS_DIR}" ];
+su "${BUILD_AS}" archsrc-getpkg "${1}"
+if [ $? -ne 0 ];
 then
-    exiterr "Failed to find ABS2 dir.\n"
+    echo "Failed to get '${1}'"
 fi
 
-if [ -d "/usr/src/arch/$PKGNAME" ];
-then
-    rm -Rf "/usr/src/arch/${PKGNAME}.bak" || exiterr "Cannot remove old directory"
-    mv "/usr/src/arch/${PKGNAME}" "/usr/src/arch/${PKGNAME}.bak" || exiterr "Cannot move old directory to .bak"
-fi
-
-cp -R "${ABS_DIR}/trunk" "/usr/src/arch/${PKGNAME}" || exiterror "Cannot copy ${ABS_DIR}/trunk to /usr/src/arch/${PKGNAME}"
-
-chown -R "${BUILD_AS}" "/usr/src/arch/$PKGNAME"
 pushd "/usr/src/arch/$PKGNAME"
 su "${BUILD_AS}" /usr/bin/makepkg || exiterr "makepkg failed"
 pacman -U --noconfirm *.pkg.tar.* || exiterr "Failed to install"
