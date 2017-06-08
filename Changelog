@@ -1,3 +1,8 @@
+0.7.0 - Jun 7 2017
+- Add aur-getpkg and aur-buildpkg to fetch and build from AUR
+- Change archsrc-buildpkg to use archsrc-getpkg
+
+
 0.6.1 - Jun 7 2017
 - Fix a %s without an arg in whatprovides_upstream (when providesDB is not
 present)
