@@ -1,7 +1,7 @@
 0.6.1 - Jun 7 2017
 - Fix a %s without an arg in whatprovides_upstream (when providesDB is not
 present)
-
+- Ensure that /usr/src/arch is 2775 and has group="users" for archsrc-buildpkg
 
 0.6.0 - Jun 7 2017
 - Move data into different repo: pacman-utils-data
