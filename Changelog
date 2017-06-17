@@ -1,3 +1,12 @@
+0.8.0 - Jun 17 2017
+
+- extras (makepkg.conf) - Remove "--as-needed" from LDFLAGS for all profiles,
+it breaks several builds, especially in combination with LTO or profiling
+- extras (makepkg.conf) - Add "nolto" option which can be passed to the
+profile functions, ( e.x. set_cflags_do_profile 'nolto' ), which will enable
+profiling WITHOUT enabling lto and linker plugin ( aka ld.gold )
+- Unset "PACKAGER" field, which was set to me
+
 0.7.0 - Jun 7 2017
 - Add aur-getpkg and aur-buildpkg to fetch and build from AUR
 - Change archsrc-buildpkg to use archsrc-getpkg
