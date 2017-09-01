@@ -107,6 +107,11 @@ do_package() {
             continue
         fi
 
+        if [ ! -d "${DIR}" ];
+        then
+            svn checkout --depth=empty "svn://svn.archlinux.org/${DIR}"
+        fi
+
         cd "${DIR}"
         svn up "${PKG_NAME}" >&2
         
