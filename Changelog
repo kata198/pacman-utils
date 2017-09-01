@@ -1,3 +1,8 @@
+0.8.2 - Aug 31 2017
+
+- Fixup abs2 to work in some cases it was not before (and thus the
+archsrc-getpkg etc commands)
+
 0.8.0 - Jun 17 2017
 
 - extras (makepkg.conf) - Remove "--as-needed" from LDFLAGS for all profiles,
