@@ -109,7 +109,13 @@ do_package() {
 
         if [ ! -d "${DIR}" ];
         then
-            svn checkout --depth=empty "svn://svn.archlinux.org/${DIR}"
+            OUTPUT="$(svn checkout --depth=empty "svn://svn.archlinux.org/${DIR}" 2>&1)"
+            if [ $? -ne 0 ];
+            then
+                echo "Failed to checkout svn://svn.archlinux.org/${DIR}" >&2
+                echo "${OUTPUT}" >&2
+                exit 1
+            fi
         fi
 
         cd "${DIR}"
