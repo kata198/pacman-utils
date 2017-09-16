@@ -110,13 +110,9 @@ def printUsage():
     global SORT_BY_PACKAGE
 
     sys.stderr.write('''Usage: pacman-optimize-mirrorlist  (Options)
-     Will read in the pacman mirrorlist, and sort it based on best times,
-       commenting out any that failed 
-       (does not have the package version a select package (default ''' + SORT_BY_PACKAGE + '''
-       that the first repo in the list has )
+     Will read in the pacman mirrorlist, and sort it based on best times
+     to download a given package (default ''' +  SORT_BY_PACKAGE + '''
 
-       NOTE: This means the top repo is important, and if you end up
-         with a lot of commented mirrors, try moving a different to the top.
 
    Options:
 
