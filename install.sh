@@ -3,7 +3,7 @@
 # Installs all the pacman-utils
 #  use ./install.sh PREFIX=$HOME to install to local home dir.
 
-BIN_FILES="installpackage archsrc-buildpkg whatprovides whatprovides_upstream mkgcdatar getpkgs abs2 archsrc-getpkg pacman-mirrorlist-optimize extractMtree.py aur-getpkg aur-buildpkg"
+BIN_FILES="installpackage archsrc-buildpkg whatprovides whatprovides_upstream mkgcdatar getpkgs abs2 archsrc-getpkg pacman-mirrorlist-optimize extractMtree.py aur-getpkg aur-buildpkg findgcda"
 
 process_installdir_args() {
 
