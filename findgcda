@@ -1,0 +1,30 @@
+#!/bin/bash
+
+if [ $# -eq 0 ];
+then
+    SEARCH_PATHS='.'
+else
+    SEARCH_PATHS=''
+    for arg in "$@";
+    do
+        if [ "$arg" == '--help' -o "$arg" == '-h' -o "$arg" == '-?' ];
+        then
+            printf "Usage: %s ([optional path1..N])\n  Finds all the .gcda (profiling information) in given directory and subdirs, or current directory if no argument provided.\n\n" "$(basename $0)" >&2
+            exit 0
+        fi
+        SEARCH_PATHS="${SEARCH_PATHS} ${arg}"
+
+    done
+fi
+
+if [ -z "${SEARCH_PATHS}" ]; then
+    SEARCH_PATHS='.'
+fi
+
+SEARCH_PATHS="$(echo "${SEARCH_PATHS}" | sed -e 's/^[ \t]*//g' -e 's/[ \t]*$//g')"
+
+
+for searchPath in $SEARCH_PATHS;
+do
+    find "${searchPath}" -type f -name '*.gcda'
+done
