@@ -23,7 +23,7 @@ fi
 
 SEARCH_PATHS="$(echo "${SEARCH_PATHS}" | sed -e 's/^[ \t]*//g' -e 's/[ \t]*$//g')"
 
-
+# TODO: Go back to the simpler version
 for searchPath in $SEARCH_PATHS;
 do
     find "${searchPath}" -type f -name '*.gcda'
