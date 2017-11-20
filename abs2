@@ -94,6 +94,7 @@ do_package() {
     OLD_DIR="$(pwd)"
     cd "${ABS2_DIR}"
 
+
     for repo in "${REPOS[@]}";
     do
         if [ "$repo" = "core" -o "${repo}" = "extra" ];
@@ -116,9 +117,12 @@ do_package() {
                 echo "${OUTPUT}" >&2
                 exit 1
             fi
+            chgrp users "${DIR}" "${DIR}/.svn" -R
+            chmod g+w "${DIR}" "${DIR}/.svn" -R
         fi
 
         cd "${DIR}"
+        svn cleanup
         svn up "${PKG_NAME}" >&2
         
         cd ..
