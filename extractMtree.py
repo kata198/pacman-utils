@@ -55,6 +55,7 @@
 
 
 import copy
+import datetime
 import errno
 import gzip
 import os
@@ -92,20 +93,22 @@ try:
 except NameError:
     PermissionError = IOError
 
-__version__ = '0.6.0'
-__version_tuple__ = (0, 6, 0)
+__version__ = '0.9.0'
+__version_tuple__ = (0, 9, 0)
 
 ####################
 ### Constants
 ################
 
 global LATEST_FILE_FORMAT
-LATEST_FILE_FORMAT = '0.2'
+LATEST_FILE_FORMAT = '0.3'
 
-SUPPORTED_DATABASE_VERSIONS = ('0.1', '0.2')
+SUPPORTED_DATABASE_VERSIONS = ('0.1', '0.2', '0.3')
 
 global PROVIDES_DB_LOCATION
 PROVIDES_DB_LOCATION = "/var/lib/pacman/.providesDB"
+
+DATE_UNKNOWN = 'DATE UNKNOWN'
 
 
 # USE_ARCH - Package arch to use. TODO: Allow others
@@ -224,10 +227,14 @@ def convertOldDatabase(oldVersion, data):
                 data[key] = newData
             else:
                 raise FailedToConvertDatabaseException('Failed to convert old data (version %s) to latest version: %s' %(oldVersion, LATEST_FILE_FORMAT))
+    elif oldVersion == '0.2':
+        # Same format, just extra "__lastUpdated" key
+        pass
     else:
         raise FailedToConvertDatabaseException('Old database version "%s" is not supported for update.' %(oldVersion, ))
 
     data['__vers'] = LATEST_FILE_FORMAT
+    data['__lastUpdated'] = datetime.datetime.now().ctime()
 
     # No return - data modified inline
 
@@ -1263,6 +1270,8 @@ def printUsage():
 
        --force-old-update        Force update on different versions, even if older
 
+       --info                    Print database info and exit
+
        -v                        Verbose (lots of extra output, default is very little)
        -vv                       Super Verbose - will show super verbose info
                                   (e.x. progress bars for curl)
@@ -1307,6 +1316,8 @@ if __name__ == '__main__':
 
     superVerboseRE = re.compile('^[-][v][v]+$')
 
+    showInfo = False
+
     if '--single-thread' in args:
         MAX_THREADS = 1
         setNumThreads = True
@@ -1329,6 +1340,9 @@ if __name__ == '__main__':
         elif arg == '--convert':
             convertOnly = True
             args.remove(arg)
+        elif arg == '--info':
+            showInfo = True
+            args.remove(arg)
         elif arg == '--force-old-update':
             forceOldUpdate = True
             args.remove(arg)
@@ -1347,19 +1361,21 @@ if __name__ == '__main__':
     ######## READ PACKAGE LIST AND OLD DB
     ########################################
 
-    if not convertOnly:
-        refreshPacmanDatabase()
+    if not showInfo:
+        if not convertOnly:
+            refreshPacmanDatabase()
 
-#    allPackageInfos = [ ('core', 'binutils', '2.28.0-2') ]
+    #    allPackageInfos = [ ('core', 'binutils', '2.28.0-2') ]
     allPackageInfos = getAllPackagesInfo()
 
     results = {}
     resultsRef = RefObj(results)
 
-
-    sys.stdout.write('Read %d total packages.\n' %( len(allPackageInfos), ))
+    if not showInfo:
+        sys.stdout.write('Read %d total packages.\n' %( len(allPackageInfos), ))
 
     priorDBContents = None
+    hasPriorDBContents = False
     try:
         with open(PROVIDES_DB_LOCATION, 'rb') as f:
             priorDBContents = f.read()
@@ -1372,26 +1388,43 @@ if __name__ == '__main__':
         ##  and/or convert database format
         #####################################
         priorDBContents = gzip.decompress(priorDBContents)
+        hasPriorDBContents = True
 
         try:
             oldResults = json.loads(priorDBContents)
-            sys.stdout.write('Read %d records from old database. Trimming non-updates...\n' %(len(oldResults) - 1, ))
 
             if '__vers' in oldResults:
-                oldVersion = oldResults.pop('__vers')
+                oldDatabaseVersion = oldResults.pop('__vers')
             else:
                 # TEMP: Assume for now old version is 0.1 because it did not have a __vers marker.
                 #   TODO: In a later version of extractedMtree, remove this assumption
-                oldVersion = '0.1'
+                oldDatabaseVersion = '0.1'
 
-            if oldVersion not in SUPPORTED_DATABASE_VERSIONS:
-                raise FailedToConvertDatabaseException('Unsupported database version: ' + oldVersion)
+            if oldDatabaseVersion == '0.1':
+                numOtherKeys = 0
+            elif oldDatabaseVersion == '0.2':
+                numOtherKeys = 1
+            elif oldDatabaseVersion == '0.3':
+                numOtherKeys = 2
+
+            oldNumPackages = len(oldResults) - numOtherKeys
+
+            if not showInfo:
+                sys.stdout.write('Read %d records from old database. Trimming non-updates...\n' %(oldNumPackages, ))
+
+            if oldDatabaseVersion not in SUPPORTED_DATABASE_VERSIONS:
+                raise FailedToConvertDatabaseException('Unsupported database version: ' + oldDatabaseVersion)
+
+            if '__lastUpdated' in oldResults:
+                lastUpdatedAt = oldResults.pop('__lastUpdated')
+            else:
+                lastUpdatedAt = DATE_UNKNOWN
 
             # Try to convert old database to new format
-            convertOldDatabase(oldVersion, oldResults)
+            convertOldDatabase(oldDatabaseVersion, oldResults)
 
             if convertOnly:
-                if oldVersion == LATEST_FILE_FORMAT:
+                if oldDatabaseVersion == LATEST_FILE_FORMAT:
                     sys.stderr.write('No need to update, already at latest version.\n')
                     sys.exit(0)
 
@@ -1407,46 +1440,50 @@ if __name__ == '__main__':
                 sys.exit(0)
 
 
-            # Assmemble new package info list, including only the packages we need to update
-            newPackagesInfo = []
-            for packageInfo in allPackageInfos:
-                pkgName = packageInfo[1]
-                pkgVersion = packageInfo[2]
+            if True or not showInfo:
+                # Assmemble new package info list, including only the packages we need to update
+                newPackagesInfo = []
+                for packageInfo in allPackageInfos:
+                    pkgName = packageInfo[1]
+                    pkgVersion = packageInfo[2]
 
-                if pkgName not in oldResults:
-                    # New package
-                    newPackagesInfo.append(packageInfo)
-                    continue
-
-                if oldResults[pkgName]['version'] == pkgVersion:
-                    results[pkgName] = oldResults[pkgName]
-                else:
-                    if not canCompareVersions:
+                    if pkgName not in oldResults:
+                        # New package
                         newPackagesInfo.append(packageInfo)
-                    elif forceOldUpdate:
-                        if isVerbose is True:
-                            oldVersion = VersionString(oldResults[pkgName]['version'])
-                            newVersion = VersionString(pkgVersion)
-                            if newVersion < oldVersion:
-                                sys.stderr.write('WARNING: Package %s - %s has an older version!  "%s"  < "%s" ! Did primary repo change to an older mirror? Doing anyway, because of --force-old-update\n' %(packageInfo[0], pkgName, str(oldVersion), str(newVersion)))
+                        continue
 
-                        newPackagesInfo.append(packageInfo)
+                    if oldResults[pkgName]['version'] == pkgVersion:
+                        results[pkgName] = oldResults[pkgName]
                     else:
-                        oldVersion = VersionString(oldResults[pkgName]['version'])
-                        newVersion = VersionString(pkgVersion)
+                        if not canCompareVersions:
+                            newPackagesInfo.append(packageInfo)
+                        elif forceOldUpdate:
+                            if isVerbose is True:
+                                oldVersion = VersionString(oldResults[pkgName]['version'])
+                                newVersion = VersionString(pkgVersion)
+                                if newVersion < oldVersion:
+                                    if not showInfo:
+                                        sys.stderr.write('WARNING: Package %s - %s has an older version!  "%s"  < "%s" ! Did primary repo change to an older mirror? Doing anyway, because of --force-old-update\n' %(packageInfo[0], pkgName, str(oldVersion), str(newVersion)))
 
-                        if newVersion > oldVersion:
                             newPackagesInfo.append(packageInfo)
                         else:
-                            sys.stderr.write('WARNING: Package %s - %s has an older version!  "%s"  < "%s" ! Did primary repo change to an older mirror? Skipping... (use --force-old-update to do anyway)\n' %(packageInfo[0], pkgName, str(oldVersion), str(newVersion)))
+                            oldVersion = VersionString(oldResults[pkgName]['version'])
+                            newVersion = VersionString(pkgVersion)
+
+                            if newVersion > oldVersion:
+                                newPackagesInfo.append(packageInfo)
+                            else:
+                                if not showInfo:
+                                    sys.stderr.write('WARNING: Package %s - %s has an older version!  "%s"  < "%s" ! Did primary repo change to an older mirror? Skipping... (use --force-old-update to do anyway)\n' %(packageInfo[0], pkgName, str(oldVersion), str(newVersion)))
 
 
 
-            allPackageInfos = newPackagesInfo
-            sys.stdout.write('\nTrimmed number of updates required to %d\n\n' %(len(allPackageInfos), ))
+                allPackageInfos = newPackagesInfo
+                if not showInfo:
+                    sys.stdout.write('\nTrimmed number of updates required to %d\n\n' %(len(allPackageInfos), ))
 
-            del oldResults
-            del newPackagesInfo
+                del oldResults
+                del newPackagesInfo
 
         except Exception as e:
             sys.stderr.write('Error reading old database (will perform a full update):  %s:  %s\n' %( e.__class__.__name__, str(e)))
@@ -1458,6 +1495,15 @@ if __name__ == '__main__':
     if convertOnly: # end if priorDBContents
         sys.stderr.write('Asked to convert old database, but could not read successfully from "%s"\n' %(PROVIDES_DB_LOCATION, ))
         sys.exit(3)
+
+
+    if showInfo:
+        if hasPriorDBContents is False:
+            sys.stderr.write('Asked to display info on old database, but no old database found.\n')
+            sys.exit(1)
+
+        sys.stdout.write('\nDatabase Version: %s\nLast Updated At: %s\nNumber of Packages: %d\n\n' % (oldDatabaseVersion, lastUpdatedAt, oldNumPackages))
+        sys.exit(0)
 
 
     if len(allPackageInfos) == 0:
@@ -1594,6 +1640,7 @@ if __name__ == '__main__':
         ######## Write resulting database to file
         ########################################
         results['__vers'] = LATEST_FILE_FORMAT
+        results['__lastUpdated'] = datetime.datetime.now().ctime()
 
 
         writeDatabase(results)
