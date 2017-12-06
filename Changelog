@@ -1,3 +1,10 @@
+0.8.4 - Dec 06 2017
+
+- Fix some permissions issues with abs2 command (and thus archsrc-*pkg and aur-*pkg commands)
+
+- Export the profile name SAFE_LTO as advertised
+
+
 0.8.3 - Nov 17 2017
 
 - Add "findgcda" helper command (as of yet undocumented)
