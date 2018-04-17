@@ -1,3 +1,10 @@
+1.0.0 - Feb 04 2018
+
+- Expand the comments throughout data/makepkg.conf [extras]
+
+- Many additional functions and cleanups in makepkg.conf
+
+
 0.8.4 - Dec 06 2017
 
 - Fix some permissions issues with abs2 command (and thus archsrc-*pkg and aur-*pkg commands)

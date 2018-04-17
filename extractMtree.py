@@ -1428,17 +1428,17 @@ if __name__ == '__main__':
                             oldVersion = VersionString(oldResults[pkgName]['version'])
                             newVersion = VersionString(pkgVersion)
                             if newVersion < oldVersion:
-                                sys.stderr.write('WARNING: Package %s - %s has an older version!  "%s"  < "%s" ! Did primary repo change to an older mirror? Doing anyway, because of --force-old-update\n' %(packageInfo[0], pkgName, str(oldVersion), str(newVersion)))
+                                sys.stderr.write('WARNING: Package %s - %s has an older version!  new = "%s"  < current = "%s" ! Did primary repo change to an older mirror? Doing anyway, because of --force-old-update\n' %(packageInfo[0], pkgName, str(newVersion), str(oldVersion)))
 
                         newPackagesInfo.append(packageInfo)
                     else:
                         oldVersion = VersionString(oldResults[pkgName]['version'])
                         newVersion = VersionString(pkgVersion)
 
-                        if newVersion > oldVersion:
+                        if newVersion >= oldVersion:
                             newPackagesInfo.append(packageInfo)
                         else:
-                            sys.stderr.write('WARNING: Package %s - %s has an older version!  "%s"  < "%s" ! Did primary repo change to an older mirror? Skipping... (use --force-old-update to do anyway)\n' %(packageInfo[0], pkgName, str(oldVersion), str(newVersion)))
+                            sys.stderr.write('WARNING: Package %s - %s has an older version!  new = "%s"  < current = "%s" ! Did primary repo change to an older mirror? Skipping... (use --force-old-update to do anyway)\n' %(packageInfo[0], pkgName, str(newVersion), str(oldVersion)))
 
 
 
