@@ -83,6 +83,12 @@ try:
     from cmp_version import VersionString
 
     canCompareVersions = True
+
+    # "Release" support (i.e. -5) was added in cmp_version 3.0.0, so alert if we are using an older version
+    import cmp_version as cmp_version_mod
+    if VersionString(cmp_version_mod.__version__) < VersionString('3.0.0'):
+        sys.stderr.write('WARNING: cmp_version module is older than 3.0.0 and does not properly compare versions with releases. Please update to a newer version.\n')
+
 except ImportError:
     sys.stderr.write('WARNING: Cannot import python module cmp_version - not installed?\nWARNING: Cannot compare versions. Will assume all != versions are >.\n')
     canCompareVersions = False
