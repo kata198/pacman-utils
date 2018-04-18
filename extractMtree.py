@@ -98,8 +98,8 @@ try:
 except NameError:
     PermissionError = IOError
 
-__version__ = '0.6.0'
-__version_tuple__ = (0, 6, 0)
+__version__ = '1.0.1'
+__version_tuple__ = (1, 0, 1)
 
 ####################
 ### Constants
