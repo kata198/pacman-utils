@@ -1,2 +1,2 @@
-cmp_version
+cmp_version>=3.0.0
 func_timeout
