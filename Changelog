@@ -1,3 +1,10 @@
+1.0.1 - Apr 17 2018
+
+- extractMtree.py - Fix backwards order of versions in "old version detected" message
+
+- extractMtree.py - Check and warn if we are using cmp_version < 3.0.0, which will sometimes provide invalid version comparisons, and update requirements.txt to explicitly require >= 3.0.0
+
+
 1.0.0 - Feb 04 2018
 
 - Expand the comments throughout data/makepkg.conf [extras]
