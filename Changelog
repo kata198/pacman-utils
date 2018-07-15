@@ -1,3 +1,22 @@
+1.1.0 - Jul 14 2018
+
+- extractMtree.py - Major updates to the "process a package" primary function.
+
+ * Greatly simplify logic into a single call to self.doOne and a single set of Exception handlers, rather than 3 copies (one within the exception handler for the retry there and then one later on if that failed to retry on all repos). A failure on a given repo is still retried against all repos, but just in a much better and cleaner way.
+
+ * Add a new exception RetryWithNextMirrorException which is raised when we get no data from an upstream server, or if the file we download is corrupted. It will retry the operation on the next mirror
+
+ * Improve logging in the main method to better note what is going on
+
+ * Improve handling of short vs long timeout
+
+- extractMtree.py - Fixes and cleanups
+ * Fix issue where division of packages amongst worker threads could fail in some cases.
+ * Explicitly check the number of threads expected vs actual and try to recreate if something is not right (shouldn't happen anymore because of fix for the final 'overflow' thread, but at least future-proofed).
+ * Add a check for when a mirror returns no data for a package, and fail it gracefully.
+ * Add a few more logging messages
+
+
 1.0.1 - Apr 17 2018
 
 - extractMtree.py - Fix backwards order of versions in "old version detected" message
