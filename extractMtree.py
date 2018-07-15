@@ -649,6 +649,13 @@ class RetryWithFullTarException(Exception):
     '''
     pass
 
+class RetryWithNextMirrorException(Exception):
+    '''
+        RetryWithNextMirrorException - Indicate that there is an issue with this package
+          on the selected mirror (such as no data returned), and to try the next mirror
+    '''
+    pass
+
 def getFileData(filename, decodeWith=None):
     '''
         getFileData - Read and decode a filename
@@ -764,7 +771,7 @@ class RunnerWorker(StoppableThread):
 
         if len(tarContents) == 0:
             msg = 'Unable to fetch %s from: %s\n' %(packageName, finalUrl)
-            raise Exception(msg)
+            raise RetryWithNextMirrorException(msg)
 
 
         if useTarMod is False:
@@ -805,9 +812,9 @@ class RunnerWorker(StoppableThread):
 
             if not data:
                 # Bad repo?
-                errorMsg = "WARNING: %s/%s on repo at %s did not return any data (mirror out of date?), " %( repoName, packageName, repoUrl)
+                errorMsg = "WARNING: %s/%s on repo at %s did not return any data (mirror out of date? file corrupt?), " %( repoName, packageName, repoUrl)
                 sys.stderr.write("%s\n\n" %(errorMsg, ))
-                raise Exception(errorMsg)
+                raise RetryWithNextMirrorException(errorMsg)
 
             bio = BytesIO()
             bio.write(data)
@@ -859,8 +866,11 @@ class RunnerWorker(StoppableThread):
         resultsRef = self.resultsRef
         failedPackageInfos = self.failedPackageInfos
         repoUrls = self.repoUrls
-        timeout = self.timeout
+        # TODO: Rename self.timeout to self.shortTimeout
+        shortTimeout = self.timeout
         longTimeout = self.longTimeout
+
+        numRepoUrls = len(repoUrls)
         
         isVerbose = self.isVerbose
 
@@ -874,79 +884,184 @@ class RunnerWorker(StoppableThread):
             if isVerbose:
                 sys.stdout.write("Processing %s - %s: %s" %(repoName, packageName, isVerbose and '\n' or '') )
                 sys.stdout.flush()
+
+            wasSuccessful = False
+            isPackageMarkedFailed = False
+
+            needsFullTar = False
+
             try:
-                # Try to run a short fetch with short timeout
-                # TODO: Add a generic "retry package" if failed to download on this mirror (try other mirrors)
-                try:
-                    func_timeout.func_timeout(timeout, self.doOne, (repoName, packageName, packageVersion, repoUrls[0]))
-                except RetryWithFullTarException as retryException1:
-                    # If RetryWithFullTarException is raised, we could not parse the tar file,
-                    #   so retry with a full read and long timeout
-                    if isVerbose:
-                        sys.stderr.write( str(retryException1) )
+                # Iterate through all repo urls here, and break at the end of the loop
+                #   if no exception is raised. If we "continue", we will try using the next repo.
 
-                    func_timeout.func_timeout(longTimeout, self.doOne, (repoName, packageName, packageVersion, repoUrls[0]), kwargs={'useTarMod' : True} )
+                global repoUrlIdx
+                global useLongTimeout
 
-                except Exception as e:
-                    if not isinstance(e, RetryWithFullTarException):
-                        raise e
+                repoUrlIdx = 0
+                useLongTimeout = False
 
-            except func_timeout.FunctionTimedOut as fte:
-                # We timed out. Try with any extra repos provided
-                try:
-                    didIt = False
-                    isPackageMarkedFailed = False
+                def moveToNextRepo():
+                    '''
+                        moveToNextRepo - Move to the next repo in the below loop.
+                            This increases the iterator index and resets the "useLongTimeout" flag to False
+                    '''
+                    global repoUrlIdx
+                    global useLongTimeout
 
-                    for nextRepoUrl in repoUrls[1:]:
-                        try:
-                            try:
-                                func_timeout.func_timeout(timeout, self.doOne, (repoName, packageName, packageVersion, nextRepoUrl))
-                            except RetryWithFullTarException as retryException1:
-                                # Failed short-fetch, try again with full fetch
+                    repoUrlIdx += 1
+                    # Only restore the short timeout if we haven't determined
+                    #   we need the full tar (full tar = long timeout always)
+                    if needsFullTar is False:
+                        useLongTimeout = False
+                    else:
+                        useLongTimeout = True
 
-                                func_timeout.func_timeout(longTimeout, self.doOne, (repoName, packageName, packageVersion, nextRepoUrl), kwargs = {'useTarMod' : True } )
 
-                            except Exception as e:
-                                if not isinstance(e, RetryWithFullTarException):
-                                    raise e
-                            didIt = True
-                            break
-                        except func_timeout.FunctionTimedOut:
-                            pass
-                        except KeyboardInterrupt as ke:
-                            raise ke
-                        except Exception as e:
+                while repoUrlIdx < numRepoUrls:
+
+                    useRepoUrl = repoUrls[repoUrlIdx]
+
+                    if needsFullTar:
+                        # If we got a RetryWithFullTarException once for this package,
+                        #   it means we downloaded the partial and were unable to extract
+                        #   the mtree. This will be true on all other mirrors, so it is per-package info tuple element
+
+                        doOneKwargs = {'useTarMod' : True}
+
+                        # Always use long timeout when doing full tar mode
+                        useTimeout = useLongTimeout
+                    else:
+                        doOneKwargs = {'useTarMod' : False}
+
+                        if useLongTimeout:
+                            useTimeout = longTimeout
+                        else:
+                            useTimeout = shortTimeout
+
+                    # Try to run a fetch
+                    try:
+                        func_timeout.func_timeout(useTimeout, self.doOne, (repoName, packageName, packageVersion, useRepoUrl), kwargs=doOneKwargs)
+                    except RetryWithFullTarException as retryWithFullTarException1:
+                        # If RetryWithFullTarException is raised, we could not parse the tar file,
+                        #   so retry with a full read and long timeout
+                        if isVerbose:
+                            sys.stderr.write( "Got RetryWithFullTarException [iter %d / %d ] on package %s at repo url %s.  %s\n" % \
+                                (repoUrlIdx + 1, numRepoUrls, packageName, useRepoUrl, str(retryWithFullTarException1) ) 
+                            )
+
+                        if needsFullTar:
+                            sys.stderr.write('UNEXPECTED!! Got a "retry with full tar" but already was trying with full tar on package %s at repo url %s.\n\tGoing to move onto next mirror anyway....\n')
+
+                            moveToNextRepo()
+                            continue
+                        else:
+                            # Otherwise, DON'T increment the repoUrlIdx, instead just set needsFullTar
+                            #  and retry with same mirror. Also set to use longer timeout
+                            needsFullTar = True
+                            useLongTimeout = True
+                            continue
+
+                    except RetryWithNextMirrorException as retryNextMirrorException1:
+                        # If RetryWithNextMirrorException is raised, we repeat the effort on the next mirror.
+                        #   so iterate next in loop
+                        if isVerbose:
+                            sys.stderr.write( "Got RetryWithNextMirrorException [ iter %d / %d ] on package %s at repo url %s.  %s\n" % \
+                                (repoUrlIdx + 1, numRepoUrls, packageName, useRepoUrl, str(retryNextMirrorException1) ) 
+                        )
+                        moveToNextRepo()
+                        continue
+                    except func_timeout.FunctionTimedOut as fte:
+                        # Got a func_timeout, if we did the short timeout, move to long timeout.
+                        #    If we did the long timeout, move to next repo.
+                        if isVerbose:
+                            if useLongTimeout:
+                                timeoutTypeStr = "using long timeout (will move onto next repo)"
+                            else:
+                                timeoutTypeStr = "using short timeout (will retry with long timeout)"
+
+                            sys.stderr.write( "Got func_timeout %s [ iter %d / %d ] on package %s at repo url %s.  %s\n" % \
+                                (timeoutTypeStr, repoUrlIdx + 1, numRepoUrls, packageName, useRepoUrl, str(fte) ) 
+                            )
+                        if not useLongTimeout:
+                            # We failed on short timeout, so switch to long timeout
+                            useLongTimeout = True
+                            # Do not move to next repo
+                            continue
+                        else:
+                            # We failed on long timeout, switch back to short timeout and
+                            #   move to next repo
+                            moveToNextRepo()
+                            continue
+
+                    except KeyboardInterrupt as kie:
+                        # If control+c is hit, raise it to be handled higher in stack
+                        raise kie
+                    except Exception as e:
+                        if isinstance(e, KeyboardInterrupt):
+                            raise e
+
+                        if not isinstance(e, RetryWithFullTarException) and \
+                           not isinstance(e, RetryWithNextMirrorException) and \
+                           not isinstance(e, func_timeout.FunctionTimedOut):
+                            excInfo = sys.exc_info()
+                            sys.stderr.write("Got unexpected exception %s [ iter %d / %d ] on package %s at repo url %s. %s  %s\n" % \
+                                ( str(type(e)), repoUrlIdx + 1, numRepoUrls, packageName, useRepoUrl, str(type(e)), str(e) )
+                            )
                             # Unknown exception, mark as failed and set "error" string
                             isPackageMarkedFailed = True
                             try:
-                                exc_info = sys.exc_info()
                                 failedPackageInfos.append ( (repoName, packageName, packageVersion) )
                                 errStr = 'Error processing %s - %s : < %s >: %s\n\n' %(repoName, packageName, e.__class__.__name__, str(e))
                                 sys.stderr.write(errStr)
                                 if isVerbose:
-                                    traceback.print_exception(*exc_info)
+                                    traceback.print_exception(*excInfo)
                                 results[packageName] = { 'files' : [], 'version' : packageVersion, 'error' : errStr }
                             except:
+                                # Exception setting exception, so unmark isPackageMarkedFailed
                                 isPackageMarkedFailed = False
                                 pass
 
-                    if didIt is False and isPackageMarkedFailed is False:
-                        # We failed, and have not already marked as failed.
-                        failedPackageInfos.append ( (repoName, packageName, packageVersion) )
-                        errStr = 'Error TIMEOUT processing %s - %s : FunctionTimedOut\n\n' %(repoName, packageName )
-                        sys.stderr.write(errStr)
-                        results[packageName] = { 'files' : [], 'version' : packageVersion, 'error' : errStr }
-                except:
-                    pass
+                            break
+                            # Raise exception? Or just continue?
+                            # raise e
+                            # moveToNextRepo()
+                            # continue
+
+                    # At this point we have completed, so exit the for loop
+                    #   (no need to retry on different repo urls)
+                    wasSuccessful = True
+                    break
+                # End while repoUrlIdx < numRepoUrls
+
+                # If we weren't successful and didn't already mark package failed
+                if wasSuccessful is False and isPackageMarkedFailed is False:
+                    # We failed, and have not already marked as failed.
+                    failedPackageInfos.append ( (repoName, packageName, packageVersion) )
+                    errStr = 'Error TIMEOUT processing %s - %s : FunctionTimedOut\n\n' %(repoName, packageName )
+                    sys.stderr.write(errStr)
+                    results[packageName] = { 'files' : [], 'version' : packageVersion, 'error' : errStr }
+
+                # If we were successful, results have been marked by the self.doOne function
+
             except KeyboardInterrupt as ke:
+                # Keep forwarding keyboard interrupt up the stream
                 raise ke
-            except Exception as e:
+            except Exception as eOuter:
+                if isinstance(eOuter, KeyboardInterrupt):
+                    raise eOuter
+
+                # Generic outer-exception handler to contain failure to a single package
                 if isVerbose:
+                    sys.stderr.write('Got outer exception processing %s on repo url %s. %s  %s\n' % \
+                        ( packageName, useRepoUrl, str(eOuter.__class__.__name__), str(eOuter) )
+                    )
                     exc_info = sys.exc_info()
                     traceback.print_exception(*exc_info)
                 try:
                     failedPackageInfos.append ( (repoName, packageName, packageVersion) )
-                    errStr = 'Error processing %s - %s : < %s >: %s\n\n' %(repoName, packageName, e.__class__.__name__, str(e))
+                    errStr = 'Error processing %s - %s : < %s >: %s\n\n' % \
+                        (repoName, packageName, eOuter.__class__.__name__, str(eOuter)
+                    )
                     sys.stderr.write(errStr)
                     results[packageName] = { 'files' : [], 'version' : packageVersion, 'error' : errStr }
                 except:
