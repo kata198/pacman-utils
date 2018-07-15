@@ -59,6 +59,7 @@ import errno
 import gzip
 import os
 import json
+import pprint
 import random
 import re
 import subprocess
@@ -802,6 +803,12 @@ class RunnerWorker(StoppableThread):
             # doTarMod is True
             data = decompressXz(tarContents)
 
+            if not data:
+                # Bad repo?
+                errorMsg = "WARNING: %s/%s on repo at %s did not return any data (mirror out of date?), " %( repoName, packageName, repoUrl)
+                sys.stderr.write("%s\n\n" %(errorMsg, ))
+                raise Exception(errorMsg)
+
             bio = BytesIO()
             bio.write(data)
             bio.seek(0)
@@ -869,6 +876,7 @@ class RunnerWorker(StoppableThread):
                 sys.stdout.flush()
             try:
                 # Try to run a short fetch with short timeout
+                # TODO: Add a generic "retry package" if failed to download on this mirror (try other mirrors)
                 try:
                     func_timeout.func_timeout(timeout, self.doOne, (repoName, packageName, packageVersion, repoUrls[0]))
                 except RetryWithFullTarException as retryException1:
@@ -993,17 +1001,50 @@ class Runner(object):
         self.threads = self._createThreads()
 
     def run(self):
+        if self.numThreads < len(self.threads):
+            sys.stderr.write ( "WARNING: Problem! numThreads [ %d ] is less than actual len(self.threads) [%d]. Too many threads created.\n" % \
+                ( self.numThreads, len(self.threads) ) 
+            )
+            try:
+                self.threads = self._createThreads()
+            except Exception as e:
+                sys.stderr.write("WARNING: Exception trying to recreate threads. %s  %s\n" %(str(type(e)), str(e)) )
+            if self.numThreads < len(self.threads):
+                sys.stderr.write('WARNING: Still too many threads [ %d ] vs expected. [ %d ]. Proceeding anyway, may be issues.\n' %(len(self.threads), self.numThreads) )
+
         if self.numThreads > 1:
             self._startThreads()
 
             didComplete = self._joinThreads()
             if not didComplete:
                 sys.exit( errno.EPIPE )
-        else:
+        elif self.numThreads == 1:
+            
+            if len(self.threads) != 1:
+                sys.stderr.write("WARNING: No thread on this object! Trying to recreate...\nObject is:\n")
+                pprint.pprint(self.__dict__, stream=sys.stderr)
+                sys.stderr.write("\n\n")
+                sys.stderr.flush()
+
+                try:
+                    self.threads = self._createThreads()
+                except Exception as e:
+                    sys.stderr.write("WARNING: Exception trying to recreate threads. %s  %s\n" %(str(type(e)), str(e)) )
+                    return
+
+                if len(self.threads) == 0:
+                    sys.stderr.write("WARNING: Could not recover, got 0 threads back on retry. Aborting.\n")
+                    sys.stderr.flush()
+                    return
+
             try:
                 self.threads[0].run()
             except KeyboardInterrupt:
                 sys.exit( errno.EPIPE )
+        else:
+            sys.stderr.write('WARNING: No threads to run!!!\n')
+            sys.stderr.flush()
+
 
     def _createThreads(self):
         '''
@@ -1079,14 +1120,15 @@ class Runner(object):
                 packageSet = splitPackages[i]
                 if isVerbose:
                     print ( "Thread %d primary repo: %s" %(i, repoUrls[i]) )
+                    print ( "Thread %d will handle %d packages." %( i, len(packageSet) ) )
                 myRepoUrls = [ repoUrls[i] ] + repoUrls[numThreads : numThreads + MAX_EXTRA_URLS]
 
                 thisThread = RunnerWorker(packageSet, resultsRef, failedPackageInfos, myRepoUrls, shortFetchSize=shortFetchSize, timeout=timeout, longTimeout=longTimeout, isVerbose=isVerbose, isSuperVerbose=isSuperVerbose)
                 threads.append(thisThread)
-            else:
-                
-                thisThread = RunnerWorker(allPackageInfos, resultsRef, failedPackageInfos, repoUrls, shortFetchSize=shortFetchSize, timeout=timeout, longTimeout=longTimeout, isVerbose=isVerbose, isSuperVerbose=isSuperVerbose)
-                threads.append(thisThread)
+        else:
+            print ( "Starting 1 thread for %d packages...\n" %( len(allPackageInfos), ) )
+            thisThread = RunnerWorker(allPackageInfos, resultsRef, failedPackageInfos, repoUrls, shortFetchSize=shortFetchSize, timeout=timeout, longTimeout=longTimeout, isVerbose=isVerbose, isSuperVerbose=isSuperVerbose)
+            threads.append(thisThread)
 
 
         return threads
