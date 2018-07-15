@@ -1,0 +1,93 @@
+#!/bin/bash
+## Copyright (c) 2018 Timothy Savannah All Rights Reserved
+#       Licensed under terms of Apache 2.0 License
+#
+###     pkgbuild-get-version ([pkgbuild path 1]) (...[pkgbuild path N])
+#
+#          Extracts the version and release info from a PKGBUILD
+#
+#        If no args:
+#
+#               Extracts from PKGBUILD in current directory
+#
+#        If one arg:
+#
+#               Extracts the $pkgver-$pkgrel from named PKGBUILD path provided as argument,
+#                   and outputs on one line. e.x. 1.5.4-2
+#
+#        If multiple args:
+#
+#               Goes through each arg as a path to a PKGBUILD, and prints a line containing:
+#                   $pkgname-$pkgver-$pkgrel  e.x. coreutils 8.29-1
+#
+#        Exit codes:
+#
+#           0 - All success
+#           2 - One or more provided PKGBUILDs did not exist / could not access
+#
+
+
+if [ $# -eq 0 ];
+then
+    FNAME='PKGBUILD'
+elif [ $# -gt 1 ];
+then
+    NEXT_ARG="$1"
+    shift
+    EXITCODE=0
+
+    while [[ ! -z "${NEXT_ARG}" ]];
+    do
+        
+        if [ ! -f "${NEXT_ARG}" ];
+        then
+            printf "No PKGBUILD at '%s'\n" "${NEXT_ARG}" >&2
+            EXITCODE=2; # No such file or directory
+
+            NEXT_ARG="$1"
+            shift
+            continue
+        fi
+
+        unset pkgname
+        unset pkgver
+        unset pkgrel
+        source "${NEXT_ARG}"
+
+        # If in multi mode, print the package name first
+        printf "%s-" "${pkgname}"
+
+        # Call this script with single arg to print version and release
+        "$0" "${NEXT_ARG}"
+
+        # If future version exits with multiple codes catch here
+        _THIS_EXIT_CODE=$?
+        if [ "${_THIS_EXIT_CODE}" -ne 0 ] && [ "${EXITCODE}" -eq 0 ];
+        then
+            EXITCODE="${_THIS_EXIT_CODE}"
+        fi
+        
+        NEXT_ARG="$1"
+        shift
+
+    done
+
+    exit ${EXITCODE};
+else
+    FNAME="$1"
+fi
+
+if [ ! -f "${FNAME}" ];
+then
+    printf "No PKGBUILD at '%s'\n" "${FNAME}" >&2
+    exit 2; # No such file or directory 
+fi
+
+unset pkgname
+unset pkgver
+unset pkgrel
+
+source "${FNAME}"
+
+echo "${pkgver}-${pkgrel}"
+
