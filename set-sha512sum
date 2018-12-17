@@ -56,13 +56,31 @@ then
     exit 2; # 2 = ENOENT = No such file or directory
 fi
 
-OLD_SUM="$(cat PKGBUILD | grep -E "^[ \t]*sha512sums=" | sed -e 's/^[^"]*"//g' -e 's/".*$//g')"
+# _VERIFY_SUMS_PATTERN - Pattern to extraract the hash-sum verify array in PKGBUILD
+#     Use with extended regex ( grep -E )
+_VERIFY_SUMS_PATTERN='^[ \t]*[a-zA-Z][a-zA-Z]*[0-9][0-9]*sums=.*'
+
+# Grab the old line
+OLD_SUM_LINE="$(cat PKGBUILD | grep -E "${_VERIFY_SUMS_PATTERN}")"
+
+# Extract the old format and value
+OLD_SUM_FORMAT="$(printf "%s" "${OLD_SUM_LINE}" | sed -e 's/=.*//g' -e 's/sums$/sum/g')"
+OLD_SUM="$(printf "%s" "${OLD_SUM_LINE}" | sed -e 's/^[^"]*"//g' -e 's/".*$//g')"
+
+# Calculate the new value
 NEW_SUM="$(sha512sum "${FNAME}" | awk {'print $1'})"
 
-printf "Old Sum: %s\nNew Sum: %s\n\n" "${OLD_SUM}" "${NEW_SUM}"
+# Output the old format and value followed by the new format and value
+printf "Old Sum <%s>: %s\nNew Sum <sha512sum>: %s\n\n" "${OLD_SUM_FORMAT}" "${OLD_SUM}" "${NEW_SUM}"
 
-sed -e 's|^[ \t]*sha512sums=.*|sha512sums=("'"${NEW_SUM}"'")|g' -i PKGBUILD
+# Do the deed and replace the old array (any *sums) with new calculated sha512sums array
+sed -e 's|'"${_VERIFY_SUMS_PATTERN}"'|sha512sums=("'"${NEW_SUM}"'")|g' -i PKGBUILD
 
-VERIFY_SUM="$(cat PKGBUILD | grep -E "^sha512sums")"
+# Extract the sums line from the PKGBUILD to verify all is good in the world
+VERIFY_SUM="$(cat PKGBUILD | grep -E "${_VERIFY_SUMS_PATTERN}")"
 
-printf "Verify: %s\n\n" "${VERIFY_SUM}"
+# Print new contents for verification
+printf "Verify PKGBUILD contents:\n%s\n\n" "${VERIFY_SUM}"
+
+
+# vim: set ts=4 sw=4 st=4 expandtab :
