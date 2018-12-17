@@ -1,0 +1,68 @@
+#!/bin/bash
+########################################
+## set-sha512sum - Update the "sha512sum" array in a PKGBUILD
+#
+#     Copyright (c) 2018 - Timothy Savannah, All Rights Reserved
+#       Licensed under terms of the APACHE License, Version 2.0
+#
+#      A copy to the latest-applicable license for pacman-utils
+#       can be found at https://github.com/kata198/pacman-utils/blob/master/LICENSE
+#
+####################################################################################
+
+usage() {
+    USAGE_STR="$(cat <<EOT
+set-sha512sum [filename]
+  Sets the sha512sum source array within the PKGBUILD
+   found in the current directory based on #filename provided.
+
+Currently works on PKGBUILDS which contain a single file.
+EOT
+)"
+    printf "%s\n" "${USAGE_STR}" >&2
+}
+
+# Look for '--help' first so we don't error out
+#   if invalid args
+for arg in "$@";
+do
+    if [ "${arg}" = "--help" -o "${arg}" = "-h" ];
+    then
+        usage;
+        exit 0;
+    fi
+done
+
+if [ $# -ne 1 ];
+then
+    if [ $# -eq 0 ];
+    then
+        printf "Not enough arguments.\n\n" >&2
+        usage;
+        exit 22; # 22 = EINVAL = Invalid Argument (No argument list too small...)
+    else
+        printf "Too many arguments.\n\n" >&2
+        usage;
+        exit 7; # 7 = E2BIG = Argument list too long
+    fi
+fi
+
+FNAME="$1"
+shift;
+
+if [ ! -f "${FNAME}" ];
+then
+    printf "No such file: \"%s\"\n" "${FNAME}" >&2
+    exit 2; # 2 = ENOENT = No such file or directory
+fi
+
+OLD_SUM="$(cat PKGBUILD | grep -E "^[ \t]*sha512sums=" | sed -e 's/^[^"]*"//g' -e 's/".*$//g')"
+NEW_SUM="$(sha512sum "${FNAME}" | awk {'print $1'})"
+
+printf "Old Sum: %s\nNew Sum: %s\n\n" "${OLD_SUM}" "${NEW_SUM}"
+
+sed -e 's|^[ \t]*sha512sums=.*|sha512sums=("'"${NEW_SUM}"'")|g' -i PKGBUILD
+
+VERIFY_SUM="$(cat PKGBUILD | grep -E "^sha512sums")"
+
+printf "Verify: %s\n\n" "${VERIFY_SUM}"
