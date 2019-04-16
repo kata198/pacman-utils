@@ -1,3 +1,9 @@
+1.2.0 - ??? ?? ????
+
+- Add 'pkgbuild-get-version' script. Will extract the version and release from a given PKGBUILD (if 1 arg), PKGBUILD in current directory (if no arg), or will print a list pkgname-pkgver-pkgrel if multiple PKGBUILDs are specified.
+
+- 
+
 1.1.0 - Jul 14 2018
 
 - extractMtree.py - Major updates to the "process a package" primary function.
