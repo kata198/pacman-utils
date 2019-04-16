@@ -30,10 +30,10 @@ _init_abs2() {
     mkdir ${ABS2_DIR}
     if [ $? -ne 0 ];
     then
-        echo "Failed to create ${ABS2_DIR}. Run once as root user." >&2
+        printf "Failed to create \"%s\". Run once as root user.\n" "${ABS2_DIR}" >&2
         if [ "`whoami`" != "root" ];
         then
-            echo "Rerunning as root: "
+            printf "Rerunning as root:\n"
             sudo $0 "$@"
             exit $?
         fi
@@ -41,7 +41,7 @@ _init_abs2() {
     chmod 2775 ${ABS2_DIR}
     chgrp users "${ABS2_DIR}"
     
-    echo "0.1" > "${ABS2_DIR}/.abs2_version"
+    printf "0.1\n" > "${ABS2_DIR}/.abs2_version"
 }
 
 get_repo_for_package() {
@@ -50,14 +50,14 @@ get_repo_for_package() {
     SEARCH_RESULT="$(pacman -Sl | grep " ${PKG_NAME} ")"
     if [ $? -ne 0 ] || [ -z "${SEARCH_RESULT}" ];
     then
-        printf "Cannot find package: \"%s\"\n" "${PKG_NAME}"
+        printf "Cannot find package: \"%s\"\n" "${PKG_NAME}" >&2
         return 1
     fi
 
     REPO="$(echo "${SEARCH_RESULT}" | sed -e 's/ .*//g')"
     if [ -z "${REPO}" ];
     then
-        printf "Cannot determine repo for package: \"%s\"\n" "${PKG_NAME}"
+        printf "Cannot determine repo for package: \"%s\"\n" "${PKG_NAME}" >&2
         return 1
     fi
 
@@ -104,7 +104,7 @@ do_package() {
         then
             DIR="community"
         else
-            echo "Unknown repo: ${repo}"
+            printf "Unknown repo: %s\n" "${repo}" >&2
             continue
         fi
 
@@ -113,8 +113,8 @@ do_package() {
             OUTPUT="$(svn checkout --depth=empty "svn://svn.archlinux.org/${DIR}" 2>&1)"
             if [ $? -ne 0 ];
             then
-                echo "Failed to checkout svn://svn.archlinux.org/${DIR}" >&2
-                echo "${OUTPUT}" >&2
+                printf "Failed to checkout svn://svn.archlinux.org/%s\n" "${DIR}" >&2
+                printf "%s\n" "${OUTPUT}" >&2
                 exit 1
             fi
             chgrp users "${DIR}" "${DIR}/.svn" -R
