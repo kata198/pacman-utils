@@ -7,9 +7,17 @@ move_to_bak() {
     LOCATION="${1}"
     if [[ -e "${LOCATION}" ]];
     then
+        printf "  Backing up %s to %s.bak...\n" "${LOCATION}" "${LOCATION}"
         mv -f "${LOCATION}" "${LOCATION}.bak"
+        RET=$?
+        if [ ${RET} -ne 0 ];
+        then
+            printf "\t\tError trying to move \"%s\" over \"%s.bak\" (got error code %d)\n\n" "${LOCATION}" "${LOCATION}" "${RET}" >&2
+            return ${RET};
+        fi
     fi
 
+    return 0;
 }
 
 echoerr() {
@@ -20,30 +28,113 @@ printferr() {
     printf "$@" >&2
 }
 
-if [[ ! -e "../../PKGBUILD" ]]; # TODO: Check "src" in path
+
+PKGBUILD_DIR=
+THIS_DIR="$(realpath "$(pwd)")"
+cd "${THIS_DIR}"
+pushd . >/dev/null 2>&1
+
+BACK_PATH=
+FOUND_IT='false'
+
+#DIRS_TO_HARDLINK='./ '
+DIRS_TO_HARDLINK=''
+
+while [[ "${THIS_DIR}" != "/" ]];
+do
+    # Back path - add a parent directory marker
+    BACK_PATH="${BACK_PATH}../"
+
+    # Add current directory represented in backpaths to hardlink dir list
+    DIRS_TO_HARDLINK="${DIRS_TO_HARDLINK} ${BACK_PATH}" 
+    cd ..
+    THIS_DIR="$(realpath "$(pwd)")"
+
+    if [ -f "PKGBUILD" ];
+    then
+        printf "We found the source dir containing PKGBUILD as: %s\n\n" "${THIS_DIR}"
+        PKGBUILD_DIR="${THIS_DIR}"
+        FOUND_IT='true'
+        break
+    fi
+done
+
+# Return to origin dir
+popd >/dev/null 2>&1
+
+# Make sure we matched it
+if [[ "${FOUND_IT}" = "false" ]];
 then
-    echoerr "Should be ran in package's source directory"
+    echoerr "Could not find PKGBUILD in any parent directories of $(pwd)"
     exit 1;
 fi
 
+# Strip out leading ' '
+DIRS_TO_HARDLINK="${DIRS_TO_HARDLINK:1:$(echo "${DIRS_TO_HARDLINK}" | wc -c)}"
 
-for fname in "gcda.tar" "../gcda.tar" "../../gcda.tar";
-do
-    move_to_bak "${fname}"
-done
-
-tar -cf 'gcda.tar' $(find . -name '*.gcda')
+move_to_bak 'gcda.tar'
 RET=$?
-if [ $RET -ne 0 ];
+if [ ${RET} -ne 0 ];
+then
+    echoerr 'Failed to move gcda.tar to gcda.tar.bak....'
+    exit ${RET}
+fi
+
+# Create fresh gcda.tar with all gcda files in this and all subdirs
+tar -cf 'gcda.tar' $(find . -type f -name '*.gcda')
+RET=$?
+
+# Make sure we successfully created the tar
+if [ ${RET} -ne 0 ];
 then
     printferr "Failed to create gcda.tar in current directory. Exit code: [%d]\n" "${RET}"
     exit 2;
 fi
 
-ln gcda.tar "$(realpath ../gcda.tar)" || echoerr "Failed to copy gcda.tar to `realpath ../gcda.tar`"
-ln gcda.tar "$(realpath ../../gcda.tar)" || echoerr "Failed to copy gcda.tar to `realpath ../../gcda.tar`"
+printf "\nCreated gcda.tar\n\n"
 
-echo "Created gcda.tar"
+
+GCDA_TAR_PATH="$(realpath 'gcda.tar')"
+RET=$?
+if [ ${RET} -ne 0 ] || [ -z "${GCDA_TAR_PATH}" ];
+then
+    echoerr "Failed to resolve realpath to `pwd`/gcda.tar. Error code ${RET}\n\n"
+    exit 1
+
+elif [ ! -e "${GCDA_TAR_PATH}" ];
+then
+    echoerr "Failed to find gcda.tar we created at \"${GCDA_TAR_PATH}\"\n\n"
+    exit 1
+fi
+
+# Iterate over all dirs back to and including PKGBUILD dir, to make
+#   backups of previous gcda.tar and fresh hardlink
+for dirName in ${DIRS_TO_HARDLINK};
+do
+    # NOTE: #dirName contains trailing slash
+    fname="$(printf "%s%s" "${dirName}" 'gcda.tar')"
+
+    # Make backup if exists
+    move_to_bak "${fname}"
+    RET=$?
+
+    if [ ${RET} -ne 0 ];
+    then
+        echoerr "WARNING: Failed to move \"${fname}\" to \"${fname}.bak\", skipping link creation there.";
+        continue
+    fi
+
+    ln gcda.tar "$(realpath "${dirName}gcda.tar")" || echoerr "Failed to create hardlink at \"${dirName}gcda.tar\" pointing to `pwd`/gcda.tar"
+    RET=$?
+
+    if [ ${RET} -eq 0 ];
+    then
+        printf "    Successfully made hardlink from \"%sgcda.tar\" to \"%s/gcda.tar\"\n\n" "${dirName}" "$(pwd)";
+    else
+        printf "    FAILED to create hardlink from \"%sgcda.tar\" to \"%s/gcda.tar\" - got error code %d\n\n" "${dirName}" "$(pwd)" "${RET}" >&2
+    fi
+
+done
 
 
 # vim: set ts=4 sw=4 st=4 expandtab :
